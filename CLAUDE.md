@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Guidelines
+
+**CRITICAL:** Always verify commands, configurations, and syntax against official documentation before suggesting them. Do not hallucinate features, directives, or capabilities that don't exist. When uncertain about:
+- Command syntax or flags
+- Configuration file directives
+- Tool capabilities or features
+- API endpoints or parameters
+
+You MUST either:
+1. Verify against known documentation
+2. Explicitly state the uncertainty and recommend the user verify
+3. Use available tools to check validity (e.g., `--help`, `man` pages, test runs)
+
+Never assume a feature exists without verification. It's better to take extra time to validate than to provide incorrect information.
+
 ## Overview
 
 Rock Band Song Database is a web application for browsing and searching Rock Band 3 songs from RPCS3 libraries. The application parses `songs.dta` files from the RPCS3 dev_hdd0 directory structure and builds a searchable catalog.
@@ -11,12 +26,27 @@ Rock Band Song Database is a web application for browsing and searching Rock Ban
 ### Start the Server
 
 ```bash
-# HTTP (development)
 python server.py
+# Serves HTTP on 0.0.0.0:8000
 
-# HTTPS with Let's Encrypt (production)
-sudo python server.py --https --domain example.com
+# Custom host/port
+python server.py --host 127.0.0.1 --port 8080
 ```
+
+### Quick Production Setup
+
+For production deployment, use the interactive setup script:
+
+```bash
+./setup.sh
+```
+
+This script offers three deployment modes:
+1. Standalone (Python server only)
+2. Own proxy (sets up Python service, user configures reverse proxy)
+3. Full Caddy + Let's Encrypt DNS with Namecheap
+
+The script automatically handles the ProtectHome override when deploying to /home directories.
 
 ### Build the Catalog
 
@@ -29,7 +59,7 @@ python build_catalog.py
 
 ### Test Changes
 
-Open http://127.0.0.1:8000 in a browser to test the web interface. The application has no automated test suite.
+Open http://0.0.0.0:8000 (or http://127.0.0.1:8000) in a browser to test the web interface. The application has no automated test suite.
 
 ## Architecture
 
@@ -42,10 +72,10 @@ Open http://127.0.0.1:8000 in a browser to test the web interface. The applicati
    - Outputs `catalog.json` (song data) and `catalog_meta.json` (build metadata)
 
 2. **API Layer** (`server.py`)
-   - Serves static files and provides REST API endpoints
+   - Serves static files and provides REST API endpoints (HTTP only)
    - Handles configuration persistence (`config.json`)
    - Validates dev_hdd0 paths and triggers catalog rebuilds
-   - Supports both HTTP and HTTPS with Let's Encrypt certificate auto-detection
+   - Production deployments use a reverse proxy (Caddy/nginx) for HTTPS
 
 3. **Frontend Layer** (`index.html`, `app.js`, `styles.css`)
    - Client-side filtering with no server-side pagination
@@ -96,6 +126,28 @@ The application is portable - it can be moved anywhere as long as config.json po
 
 ## Production Deployment
 
-The README recommends Caddy as a reverse proxy for production deployments (automatic HTTPS, simpler config than nginx). The Python server runs on port 8000, Caddy handles HTTPS and serves static files directly.
+The Python server only provides HTTP. Production deployments MUST use a reverse proxy (Caddy or nginx) for:
+- HTTPS/TLS encryption
+- Security hardening and rate limiting
+- Efficient static file serving
+- Attack mitigation
+
+The recommended setup: Python server on localhost:8000 (HTTP), Caddy/nginx handles public HTTPS traffic and proxies API requests.
+
+### Important: Installation Location and Caddy Permissions
+
+**Caddy's systemd service includes `ProtectHome=true`** which prevents access to `/home` directories for security. This causes HTTP 403 errors when serving files from user home directories.
+
+**Solutions:**
+1. **Recommended:** Deploy to `/opt/rockdb` or `/var/www/rockdb` - no configuration changes needed
+2. **If using `/home`:** Create systemd override to disable ProtectHome:
+   ```bash
+   sudo mkdir -p /etc/systemd/system/caddy.service.d/
+   echo -e '[Service]\nProtectHome=false' | sudo tee /etc/systemd/system/caddy.service.d/override.conf
+   sudo systemctl daemon-reload && sudo systemctl restart caddy
+   chmod 755 /home/username  # Make parent directory readable
+   ```
+
+The setup.sh script automatically handles this based on installation path.
 
 See README.md for complete systemd service setup and Caddy/nginx configuration examples.

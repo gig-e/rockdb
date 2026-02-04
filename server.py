@@ -2,19 +2,16 @@
 """
 RPCS3 Rock Band Song Catalog Server
 
-Serves the song database web app with optional HTTPS support.
+Serves the song database web app. Use a reverse proxy (Caddy/nginx) for HTTPS.
 
 Usage:
-  python server.py                     # HTTP on 127.0.0.1:8000
-  python server.py --https             # HTTPS on 0.0.0.0:443 with Let's Encrypt
-  python server.py --https --port 8443 # HTTPS on custom port
+  python server.py                          # HTTP on 0.0.0.0:8000
+  python server.py --host 127.0.0.1         # Bind to localhost only
+  python server.py --port 8080              # Custom port
 
 Environment variables:
-  CATALOG_HOST      Bind address (default: 127.0.0.1, or 0.0.0.0 with --https)
-  CATALOG_PORT      Port number (default: 8000, or 443 with --https)
-  SSL_CERT          Path to certificate file (default: /etc/letsencrypt/live/*/fullchain.pem)
-  SSL_KEY           Path to private key file (default: /etc/letsencrypt/live/*/privkey.pem)
-  SSL_DOMAIN        Domain name for Let's Encrypt cert lookup
+  CATALOG_HOST      Bind address (default: 0.0.0.0)
+  CATALOG_PORT      Port number (default: 8000)
 """
 
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +19,6 @@ from pathlib import Path
 import argparse
 import json
 import os
-import ssl
 import sys
 
 from build_catalog import build_catalog
@@ -204,99 +200,22 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"error": "Not found"}, status=404)
 
 
-def find_letsencrypt_cert(domain: str | None = None) -> tuple[Path, Path] | None:
-    """Find Let's Encrypt certificate files for the given domain."""
-    le_base = Path("/etc/letsencrypt/live")
-    if not le_base.exists():
-        return None
-
-    if domain:
-        cert_dir = le_base / domain
-        if cert_dir.exists():
-            cert = cert_dir / "fullchain.pem"
-            key = cert_dir / "privkey.pem"
-            if cert.exists() and key.exists():
-                return cert, key
-        return None
-
-    # Auto-detect: use first available domain
-    for cert_dir in le_base.iterdir():
-        if cert_dir.is_dir() and not cert_dir.name.startswith("."):
-            cert = cert_dir / "fullchain.pem"
-            key = cert_dir / "privkey.pem"
-            if cert.exists() and key.exists():
-                return cert, key
-    return None
-
-
-def create_ssl_context(cert_path: str, key_path: str) -> ssl.SSLContext:
-    """Create SSL context with the given certificate and key."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(cert_path, key_path)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    return context
 
 
 def main():
     parser = argparse.ArgumentParser(description="Rock Band Song Catalog Server")
-    parser.add_argument("--https", action="store_true", help="Enable HTTPS")
-    parser.add_argument("--host", help="Bind address")
-    parser.add_argument("--port", type=int, help="Port number")
-    parser.add_argument("--cert", help="Path to SSL certificate (fullchain.pem)")
-    parser.add_argument("--key", help="Path to SSL private key (privkey.pem)")
-    parser.add_argument("--domain", help="Let's Encrypt domain name")
+    parser.add_argument("--host", help="Bind address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, help="Port number (default: 8000)")
     args = parser.parse_args()
 
-    use_https = args.https or os.environ.get("SSL_CERT")
-
     # Determine host and port
-    if args.host:
-        host = args.host
-    elif os.environ.get("CATALOG_HOST"):
-        host = os.environ["CATALOG_HOST"]
-    else:
-        host = "0.0.0.0" if use_https else "127.0.0.1"
-
-    if args.port:
-        port = args.port
-    elif os.environ.get("CATALOG_PORT"):
-        port = int(os.environ["CATALOG_PORT"])
-    else:
-        port = 443 if use_https else 8000
+    host = args.host or os.environ.get("CATALOG_HOST", "0.0.0.0")
+    port = args.port or int(os.environ.get("CATALOG_PORT", "8000"))
 
     server = ThreadingHTTPServer((host, port), Handler)
 
-    if use_https:
-        # Get certificate paths
-        cert_path = args.cert or os.environ.get("SSL_CERT")
-        key_path = args.key or os.environ.get("SSL_KEY")
-        domain = args.domain or os.environ.get("SSL_DOMAIN")
-
-        if not cert_path or not key_path:
-            # Try to find Let's Encrypt certs
-            le_certs = find_letsencrypt_cert(domain)
-            if le_certs:
-                cert_path, key_path = str(le_certs[0]), str(le_certs[1])
-                print(f"Using Let's Encrypt certificate: {cert_path}")
-            else:
-                print("Error: HTTPS enabled but no certificates found.", file=sys.stderr)
-                print("Provide --cert and --key, or set SSL_CERT/SSL_KEY env vars,", file=sys.stderr)
-                print("or ensure Let's Encrypt certs exist in /etc/letsencrypt/live/", file=sys.stderr)
-                sys.exit(1)
-
-        try:
-            context = create_ssl_context(cert_path, key_path)
-            server.socket = context.wrap_socket(server.socket, server_side=True)
-            proto = "https"
-        except Exception as e:
-            print(f"Error loading SSL certificate: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        proto = "http"
-
-    print(f"Catalog server running on {proto}://{host}:{port}")
-    if port == 443 and host == "0.0.0.0":
-        print("Note: Port 443 may require root privileges")
+    print(f"Catalog server running on http://{host}:{port}")
+    print("For HTTPS, use a reverse proxy (Caddy or nginx)")
 
     try:
         server.serve_forever()

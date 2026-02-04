@@ -5,33 +5,24 @@ A web app for browsing and searching Rock Band 3 songs from your RPCS3 library.
 ## Quick Start
 
 ```bash
-# Start the server
 python server.py
-
 # Open http://127.0.0.1:8000 in your browser
 ```
 
-On first run, the app will:
-1. Open the settings dialog automatically
-2. Suggest the default dev_hdd0 location
-3. Validate the path and count song files
-4. Build the catalog after you confirm
-
-You can also build the catalog manually:
-
-```bash
-python build_catalog.py
-```
+On first run, the app will guide you through configuration:
+1. Settings dialog opens automatically
+2. Suggests the default dev_hdd0 location
+3. Validates the path and counts song files
+4. Builds the catalog after confirmation
 
 ## Features
 
-- **Settings interface** - Configure dev_hdd0 directory location with validation
-- **Portable** - Move the app anywhere and configure the song directory path
-- **First-run setup** - Auto-detects and suggests default locations
+- **Settings interface** - Configure dev_hdd0 directory with real-time validation
+- **Portable** - Move the app anywhere and configure via web UI or config.json
 - Search by artist, title, album, or pack name
 - Filter by artist, title, type, pack, genre, and decade
 - Eurovision song highlighting
-- Mobile-friendly card layout
+- Mobile-friendly card layout (breakpoint: 768px)
 - Dark mode support (follows system preference)
 - Live catalog rebuilding from the web UI
 
@@ -40,107 +31,116 @@ python build_catalog.py
 | File | Description |
 |------|-------------|
 | `server.py` | HTTP/HTTPS server with API endpoints |
-| `build_catalog.py` | Parses `songs.dta` files and builds `catalog.json` |
+| `build_catalog.py` | Parses `songs.dta` files and builds catalog |
 | `index.html` | Main web interface |
 | `app.js` | Frontend filtering and rendering |
 | `styles.css` | Styling with mobile and dark mode support |
-| `config.json` | Configuration file (dev_hdd0 path) |
+| `config.json` | Configuration (dev_hdd0 path) |
 | `catalog.json` | Generated song database |
-| `catalog_meta.json` | Build metadata (timestamp, sources) |
+| `catalog_meta.json` | Build metadata |
 
-## Server Usage
+## Development
 
-### HTTP (Development)
+### HTTP Server
 
 ```bash
 python server.py
-# Serves on http://127.0.0.1:8000
+# Serves on http://0.0.0.0:8000
 ```
 
-### HTTPS with Let's Encrypt
-
-```bash
-# Auto-detect certificate from /etc/letsencrypt/live/
-sudo python server.py --https
-
-# Specify domain
-sudo python server.py --https --domain example.com
-
-# Custom certificate paths
-sudo python server.py --https \
-  --cert /etc/letsencrypt/live/example.com/fullchain.pem \
-  --key /etc/letsencrypt/live/example.com/privkey.pem
-```
+The server binds to all network interfaces by default. For production deployments with HTTPS, use a reverse proxy (see below).
 
 ### Command Line Options
 
 | Option | Description |
 |--------|-------------|
-| `--https` | Enable HTTPS (default port 443) |
-| `--host HOST` | Bind address (default: 127.0.0.1, or 0.0.0.0 with --https) |
-| `--port PORT` | Port number (default: 8000, or 443 with --https) |
-| `--cert PATH` | Path to SSL certificate (fullchain.pem) |
-| `--key PATH` | Path to SSL private key (privkey.pem) |
-| `--domain NAME` | Let's Encrypt domain for auto-detection |
+| `--host HOST` | Bind address (default: 0.0.0.0) |
+| `--port PORT` | Port number (default: 8000) |
 
-### Environment Variables
+Environment variables (`CATALOG_HOST`, `CATALOG_PORT`) can override defaults.
 
-| Variable | Description |
-|----------|-------------|
-| `CATALOG_HOST` | Bind address |
-| `CATALOG_PORT` | Port number |
-| `SSL_CERT` | Path to certificate file |
-| `SSL_KEY` | Path to private key file |
-| `SSL_DOMAIN` | Domain name for Let's Encrypt lookup |
-
-### Running as a Service
-
-Create `/etc/systemd/system/rockdb.service`:
-
-```ini
-[Unit]
-Description=Rock Band Song Database
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/path/to/rockdb
-ExecStart=/usr/bin/python3 server.py --https --domain example.com
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Replace `/path/to/rockdb` with your actual directory path.
-
-Then enable and start:
+**Examples:**
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable rockdb
-sudo systemctl start rockdb
+# Bind to localhost only
+python server.py --host 127.0.0.1
+
+# Custom port
+python server.py --port 8080
+
+# Both
+python server.py --host 127.0.0.1 --port 8080
 ```
 
-## Production Setup with Caddy (Recommended)
+## Production Deployment
 
-Caddy is the simplest option - automatic HTTPS with zero certificate configuration.
+**⚠️ IMPORTANT:** Always use a reverse proxy (Caddy or nginx) for production deployments. The Python server only provides HTTP - the reverse proxy handles HTTPS, security hardening, rate limiting, and efficient static file serving.
 
-### 1. Install Caddy
+### Quick Setup (Interactive)
+
+Run the interactive setup script:
+
+```bash
+./setup.sh
+```
+
+The script will prompt you to choose:
+1. **Standalone** - Python server only (no HTTPS)
+2. **Own proxy** - Setup Python service, you configure your reverse proxy
+3. **Full Caddy + Let's Encrypt** - Complete setup with Caddy and Namecheap DNS validation
+
+The script automatically handles all configuration including the systemd ProtectHome override when needed.
+
+### Manual Setup
+
+For manual configuration or other reverse proxies, see the sections below.
+
+### Installation Location
+
+**For production deployments, choose your installation location carefully:**
+
+- **`/opt/rockdb`** or **`/var/www/rockdb`** (Recommended)
+  - No additional systemd configuration required
+  - Caddy's default security settings work out of the box
+  - Better security posture with systemd sandboxing intact
+
+- **`/home/username/rockdb`** (Requires extra configuration)
+  - Caddy's `ProtectHome=true` security feature blocks access by default
+  - Requires systemd override to disable `ProtectHome` (see below)
+  - Less secure - removes systemd's home directory protection
+
+**If using a home directory location**, you must create a systemd override:
+
+```bash
+sudo mkdir -p /etc/systemd/system/caddy.service.d/
+echo -e '[Service]\nProtectHome=false' | sudo tee /etc/systemd/system/caddy.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart caddy
+```
+
+And ensure the parent directory is readable:
+
+```bash
+chmod 755 /home/username  # Replace with your actual home directory
+```
+
+### Option 1: Caddy Reverse Proxy (Recommended)
+
+Caddy provides automatic HTTPS with zero certificate configuration, plus security hardening, rate limiting, efficient static file serving, and built-in protection against common exploits.
+
+#### Standard Setup (HTTP-01 Challenge)
+
+**1. Install Caddy**
 
 ```bash
 sudo pacman -S caddy
 ```
 
-### 2. Create Caddyfile
-
-Create `/etc/caddy/Caddyfile`:
+**2. Create `/etc/caddy/Caddyfile`**
 
 ```caddyfile
 songdb.example.com {
-    root * /path/to/rockdb
+    root * /opt/rockdb
     file_server
 
     # Proxy API requests to Python server
@@ -155,24 +155,11 @@ songdb.example.com {
 }
 ```
 
-Replace `/path/to/rockdb` with your actual directory path.
+> **Note:** Using `/opt/rockdb` avoids needing to modify Caddy's systemd security settings. If you must use a path in `/home`, see the "Installation Location" section above.
 
-That's it. Caddy automatically:
-- Obtains Let's Encrypt certificates
-- Renews certificates before expiry
-- Redirects HTTP → HTTPS
-- Enables HTTP/2 and HTTP/3
+Caddy automatically obtains and renews Let's Encrypt certificates, redirects HTTP → HTTPS, and enables HTTP/2 and HTTP/3.
 
-### 3. Start Caddy
-
-```bash
-sudo systemctl enable caddy
-sudo systemctl start caddy
-```
-
-### 4. Run Python server (API only)
-
-Create `/etc/systemd/system/rockdb.service`:
+**3. Create `/etc/systemd/system/rockdb.service`**
 
 ```ini
 [Unit]
@@ -182,7 +169,7 @@ After=network.target
 [Service]
 Type=simple
 User=your-username
-WorkingDirectory=/path/to/rockdb
+WorkingDirectory=/opt/rockdb
 ExecStart=/usr/bin/python3 server.py --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
@@ -191,34 +178,61 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Replace `/path/to/rockdb` and `your-username` with your actual values.
+Replace `your-username` with your actual username. If using a different path, update `WorkingDirectory` accordingly.
+
+**4. Start Services**
 
 ```bash
-sudo systemctl enable rockdb
-sudo systemctl start rockdb
+sudo systemctl enable --now caddy
+sudo systemctl enable --now rockdb
 ```
 
-### Why Caddy over nginx?
-
-| | nginx | Caddy |
-|---|---|---|
-| **Config** | 40+ lines | 10 lines |
-| **HTTPS setup** | Install certbot, configure certs | Automatic |
-| **Cert renewal** | Separate timer/cron | Built-in |
-| **HTTP/3** | Requires extra modules | Built-in |
-
----
+#### DNS Challenge Setup (Advanced)
 
 <details>
-<summary>Alternative: nginx setup (click to expand)</summary>
+<summary>Use DNS validation when port 80/443 are blocked or for wildcard certificates</summary>
 
-### nginx + certbot
+DNS validation (DNS-01 challenge) allows Let's Encrypt to verify domain ownership via DNS records instead of HTTP. This is useful when:
+- Firewall blocks ports 80/443
+- Server is behind NAT without port forwarding
+- You need wildcard certificates (*.example.com)
+
+**Automated Setup**
+
+Run the interactive setup script:
+
+```bash
+./setup.sh
+# Select option 3: Full setup with Caddy + Let's Encrypt DNS (Namecheap)
+```
+
+The script will prompt for all necessary values including:
+- Domain name
+- Let's Encrypt email
+- Namecheap API credentials
+
+It automatically detects if rockdb is in `/home` and applies the necessary systemd override.
+
+**For other DNS providers:** The setup script uses Namecheap. For other providers (Cloudflare, Route53, GoDaddy, etc.), you can fork the script and replace `github.com/caddy-dns/namecheap` with your provider's module. Find available modules at [caddy-dns](https://github.com/caddy-dns).
+
+**Prerequisites:**
+- Whitelist your server's IP in your DNS provider's API settings
+- Ensure DNS A record points to this server
+
+</details>
+
+### Option 2: nginx Reverse Proxy
+
+<details>
+<summary>Click to expand nginx setup</summary>
+
+**Install nginx and certbot**
 
 ```bash
 sudo pacman -S nginx certbot certbot-nginx
 ```
 
-Create `/etc/nginx/sites-available/rockdb.conf`:
+**Create `/etc/nginx/sites-available/rockdb.conf`**
 
 ```nginx
 server {
@@ -238,7 +252,7 @@ server {
     add_header Strict-Transport-Security "max-age=63072000" always;
 
     location / {
-        root /path/to/rockdb;
+        root /opt/rockdb;
         index index.html;
         try_files $uri $uri/ =404;
     }
@@ -251,35 +265,32 @@ server {
 }
 ```
 
+**Enable and configure**
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/rockdb.conf /etc/nginx/sites-enabled/
 sudo certbot --nginx -d songdb.example.com
 sudo systemctl restart nginx
 ```
 
+Use the same systemd service as shown in the Caddy section.
+
 </details>
 
-## API Endpoints
+### Why Caddy?
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Web interface |
-| `/api/status` | GET | Catalog metadata |
-| `/api/catalog` | GET | Full song catalog |
-| `/api/config` | GET | Current configuration and validation status |
-| `/api/config` | POST | Save configuration (requires `dev_hdd0_path` in JSON body) |
-| `/api/validate` | POST | Validate a path without saving (requires `path` in JSON body) |
-| `/api/build` | POST | Rebuild catalog from songs.dta files |
+| | nginx | Caddy |
+|---|---|---|
+| **Config** | 40+ lines | 10 lines |
+| **HTTPS setup** | Install certbot, configure certs | Automatic |
+| **Cert renewal** | Separate timer/cron | Built-in |
+| **HTTP/3** | Requires extra modules | Built-in |
 
 ## Configuration
 
-### Settings Interface
+### Web Interface
 
-Click the ⚙️ Settings button in the web interface to:
-- Configure the dev_hdd0 directory path
-- Validate that the path contains songs.dta files
-- See how many song files were found
-- Save and rebuild the catalog
+Click the ⚙️ Settings button to configure the dev_hdd0 directory path. The interface validates paths in real-time and shows song file counts.
 
 ### Manual Configuration
 
@@ -291,25 +302,7 @@ Edit `config.json`:
 }
 ```
 
-Then rebuild the catalog:
-
-```bash
-python build_catalog.py
-```
-
-### Moving the App
-
-The app is fully portable. You can move the `rockdb` directory anywhere:
-
-1. Move the directory to your desired location
-2. Update `config.json` with the absolute path to your dev_hdd0 directory
-3. Start the server from the new location
-
-The default dev_hdd0 path is `../dev_hdd0` relative to the script location.
-
-## Building the Catalog
-
-The catalog is built by scanning all `songs.dta` files in your configured dev_hdd0 directory:
+Then rebuild:
 
 ```bash
 python build_catalog.py
@@ -317,14 +310,24 @@ python build_catalog.py
 
 Or click "Update DB" in the web interface.
 
-### Song Sources
+## API Endpoints
 
-Songs are categorized by type:
-- **disc** - Base game songs
-- **dlc** - Official DLC packs
-- **export** - Exported songs from other games
-- **custom** - Custom songs
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Web interface |
+| `/api/status` | GET | Catalog metadata |
+| `/api/catalog` | GET | Full song catalog |
+| `/api/config` | GET | Current configuration with validation status |
+| `/api/config` | POST | Save configuration (JSON: `{"dev_hdd0_path": "..."}`) |
+| `/api/validate` | POST | Validate path without saving (JSON: `{"path": "..."}`) |
+| `/api/build` | POST | Rebuild catalog from songs.dta files |
 
-## Mobile Support
+## Song Classification
 
-On screens under 768px, the table view switches to a card-based layout with larger touch targets. The interface adapts to both light and dark system themes.
+Songs are categorized by directory location within dev_hdd0:
+
+- **disc** - BASE pack (songs.dta directly under USRDIR)
+- **dlc** - Official DLC packs (contains "dlc", "pack", or "rb4-to-rb2")
+- **export** - Exported songs from other games (contains "export")
+- **custom** - Custom songs (contains "custom")
+- **other** - Everything else
