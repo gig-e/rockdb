@@ -6,9 +6,12 @@ deletion operations on Rock Band songs.dta files.
 """
 
 from pathlib import Path
+from collections import defaultdict
 from datetime import datetime
 import re
 import os
+import shutil
+import time
 
 
 def find_song_entry_bounds(text: str, song_key: str) -> tuple[int, int] | None:
@@ -411,7 +414,6 @@ def restore_from_backup(dev_hdd0_path: Path, backup_type: str, backup_path: str)
                 original_path.rename(safety_backup)
 
             # Copy backup to original location
-            import shutil
             shutil.copy2(backup_full_path, original_path)
 
             return {
@@ -483,8 +485,6 @@ def cleanup_old_backups(dev_hdd0_path: Path, days_old: int = 30) -> dict:
             'errors': list[str]
         }
     """
-    import time
-
     cutoff_time = time.time() - (days_old * 24 * 60 * 60)
     removed_dta = 0
     removed_folders = 0
@@ -514,7 +514,6 @@ def cleanup_old_backups(dev_hdd0_path: Path, days_old: int = 30) -> dict:
                     freed_space += folder_size
 
                     # Remove folder
-                    import shutil
                     shutil.rmtree(deleted_folder)
                     removed_folders += 1
             except Exception as e:
@@ -645,8 +644,7 @@ def patch_song_metadata(dta_path: Path, song_key: str, fields: dict) -> dict:
         dta_path.write_text(new_text, encoding='utf-8')
     except Exception as e:
         try:
-            backup_path.read_text(encoding='utf-8')
-            dta_path.write_text(text, encoding='utf-8')
+            dta_path.write_text(text, encoding='utf-8')  # restore original content
         except Exception:
             pass
         return {'patched': [], 'added': [], 'backup_path': str(backup_path.name),
@@ -673,8 +671,6 @@ def find_duplicates(catalog: list[dict]) -> dict:
 
     Each group includes a 'match_type' field: 'song_id' or 'metadata'.
     """
-    from collections import defaultdict
-
     PRIORITY = {'disc': 1, 'export': 2, 'dlc': 3, 'custom': 4, 'other': 5}
 
     def make_group(songs_sorted, match_type):

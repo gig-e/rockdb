@@ -108,6 +108,7 @@ function renderTable() {
   const frag = document.createDocumentFragment();
   state.filtered.forEach((song) => {
     const tr = document.createElement("tr");
+    tr.dataset.songKey = song.song_key;
     if (isEurovisionSong(song)) tr.classList.add("row-highlight");
     if (state.selectedSongs.has(song.song_key)) tr.classList.add("selected");
 
@@ -136,8 +137,8 @@ function renderTable() {
   });
   els.table.appendChild(frag);
 
-  // Render mobile cards
-  renderMobileCards();
+  // Only render the layout that's actually visible
+  if (window.innerWidth < 768) renderMobileCards();
 
   els.count.textContent = `${state.filtered.length} songs`;
   updateSelectionUI();
@@ -224,26 +225,36 @@ function filterSongs() {
 }
 
 function hydrateFilters() {
-  const artists = [...new Set(state.songs.map((s) => s.artist).filter(Boolean))].sort();
-  const titles = [...new Set(state.songs.map((s) => s.name).filter(Boolean))].sort();
-  const types = [...new Set(state.songs.map((s) => s.pack_type).filter(Boolean))].sort();
-  const packs = [...new Set(state.songs.map((s) => s.pack_name).filter(Boolean))].sort();
-  const decadeTags = state.songs.map((s) => (s.decade || "").toString().replace(/'/g, "")).filter(Boolean);
-  const yearDecades = state.songs
-    .map((s) => Number(s.year))
-    .filter((y) => Number.isFinite(y))
-    .map((y) => `${Math.floor(y / 10) * 10}s`);
-  const normalizedTags = decadeTags
-    .map((tag) => normalizeDecade(tag))
-    .filter((tag) => !/^the\d{2}s$/i.test(tag));
-  const decades = [...new Set([...normalizedTags, ...yearDecades])].sort();
-  optionize(els.artist, artists);
-  optionize(els.title, titles);
-  optionize(els.type, types);
-  optionize(els.pack, packs);
-  const genres = [...new Set(state.songs.map((s) => s.genre).filter(Boolean))].sort();
-  optionize(els.year, decades);
-  optionize(els.genre, genres);
+  // Single pass over all songs to collect all filter values
+  const artists = new Set(), titles = new Set(), types = new Set(),
+        packs = new Set(), genres = new Set(), decades = new Set();
+
+  for (const s of state.songs) {
+    if (s.artist) artists.add(s.artist);
+    if (s.name) titles.add(s.name);
+    if (s.pack_type) types.add(s.pack_type);
+    if (s.pack_name) packs.add(s.pack_name);
+    if (s.genre) genres.add(s.genre);
+
+    // Decade: prefer tagged decade, fall back to deriving from year
+    if (s.decade) {
+      const norm = normalizeDecade(s.decade.toString().replace(/'/g, ""));
+      if (norm) decades.add(norm);
+    } else if (s.year) {
+      const y = Number(s.year);
+      if (Number.isFinite(y)) decades.add(`${Math.floor(y / 10) * 10}s`);
+    }
+  }
+
+  optionize(els.artist, [...artists].sort());
+  optionize(els.title,  [...titles].sort());
+  optionize(els.type,   [...types].sort());
+  optionize(els.pack,   [...packs].sort());
+  optionize(els.genre,  [...genres].sort());
+  optionize(els.year,   [...decades].sort());
+
+  // Cache pack count for showPackWarning (avoids a second full pass)
+  state._packCount = packs.size;
 }
 
 function resetFilters() {
@@ -377,17 +388,11 @@ async function checkFirstRun() {
   }
 }
 
-// Show pack warning banner if >50 packs
+// Show pack warning banner if >50 packs (uses count cached by hydrateFilters)
 function showPackWarning() {
-  const packs = [...new Set(state.songs.map(s => s.pack_name))];
-  const packCount = packs.length;
-
-  if (packCount > 50) {
-    els.packWarning.style.display = "block";
-    els.packWarningCount.textContent = packCount;
-  } else {
-    els.packWarning.style.display = "none";
-  }
+  const packCount = state._packCount || 0;
+  els.packWarning.style.display = packCount > 50 ? "block" : "none";
+  if (packCount > 50) els.packWarningCount.textContent = packCount;
 }
 
 async function loadCatalog() {
@@ -438,7 +443,14 @@ function toggleSongSelection(songKey, checked) {
   } else {
     state.selectedSongs.delete(songKey);
   }
-  renderTable();
+  // Update only the affected row rather than rebuilding the entire table
+  const row = els.table.querySelector(`tr[data-song-key="${CSS.escape(songKey)}"]`);
+  if (row) {
+    row.classList.toggle("selected", checked);
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = checked;
+  }
+  updateSelectionUI();
 }
 
 function toggleSelectAll(checked) {
@@ -521,14 +533,15 @@ async function executeDeletion() {
 
 // Pack selection functions
 function openPackSelectModal() {
-  // Get unique packs from filtered songs
-  const packs = [...new Set(state.filtered.map((s) => s.pack_name))].sort();
+  // Single pass: count songs per pack
+  const counts = {};
+  for (const s of state.filtered) {
+    counts[s.pack_name] = (counts[s.pack_name] || 0) + 1;
+  }
+  const packs = Object.keys(counts).sort();
 
   els.packSelector.innerHTML = packs
-    .map((pack) => {
-      const count = state.filtered.filter((s) => s.pack_name === pack).length;
-      return `<option value="${escapeHtml(pack)}">${escapeHtml(pack)} (${count} songs)</option>`;
-    })
+    .map((pack) => `<option value="${escapeHtml(pack)}">${escapeHtml(pack)} (${counts[pack]} songs)</option>`)
     .join("");
 
   els.packSelectModal.classList.add("active");

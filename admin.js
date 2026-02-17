@@ -62,9 +62,10 @@ async function loadCatalog() {
     if (!res.ok) throw new Error("catalog.json missing");
     state.songs = await res.json();
 
+    let meta = null;
     const metaRes = await fetch("./catalog_meta.json", { cache: "no-store" });
     if (metaRes.ok) {
-      const meta = await metaRes.json();
+      meta = await metaRes.json();
       state.sources = meta.sources || [];
       state.lastUpdated = meta.generated_at;
       if (meta.generated_at) {
@@ -74,7 +75,7 @@ async function loadCatalog() {
 
     updatePackList();
 
-    const dedup = meta.deduplicated;
+    const dedup = meta?.deduplicated;
     if (dedup && dedup.total_dropped > 0) {
       showDedupNotice(dedup);
     } else {
@@ -591,12 +592,16 @@ async function deleteAllDuplicates() {
 
 // Pack merging functions
 function updatePackList() {
-  const packs = [...new Set(state.songs.map(s => s.pack_name))].sort();
+  // Single pass: collect unique packs and song counts simultaneously
+  const counts = {};
+  for (const s of state.songs) {
+    counts[s.pack_name] = (counts[s.pack_name] || 0) + 1;
+  }
+  const packs = Object.keys(counts).sort();
   state.packMerge.packList = packs;
 
   els.packCount.textContent = packs.length;
 
-  // Show warning if >50 packs
   if (packs.length > 50) {
     els.mergeStats.innerHTML =
       `You have <strong>${packs.length}</strong> packs in your catalog. ` +
@@ -604,12 +609,6 @@ function updatePackList() {
   } else {
     els.mergeStats.innerHTML = `You have <span id="pack-count">${packs.length}</span> packs in your catalog`;
   }
-
-  // Populate selector
-  const counts = {};
-  state.songs.forEach(s => {
-    counts[s.pack_name] = (counts[s.pack_name] || 0) + 1;
-  });
 
   els.mergePackSelector.innerHTML = packs
     .map(pack => `<option value="${escapeHtml(pack)}">${escapeHtml(pack)} (${counts[pack]} songs)</option>`)
@@ -732,8 +731,6 @@ async function executeMerge() {
     state.packMerge.validation = null;
 
     await loadCatalog();
-    updatePackList();
-
     alert(result.summary);
     setStatus("Merge complete");
 
