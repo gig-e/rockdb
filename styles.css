@@ -38,6 +38,9 @@ body {
 
 /* Header */
 header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   padding: 24px 24px 16px;
   display: flex;
   flex-direction: column;
@@ -119,6 +122,12 @@ main {
   padding: 20px;
   margin-bottom: 20px;
   transition: box-shadow var(--transition);
+}
+
+.filters-panel {
+  position: sticky;
+  top: var(--header-h, 0px);
+  z-index: 90;
 }
 
 .panel h3 {
@@ -281,7 +290,7 @@ thead th {
   border-bottom: 2px solid var(--border);
   padding: 12px 10px;
   position: sticky;
-  top: 0;
+  top: calc(var(--header-h, 0px) + var(--filter-h, 0px));
   background: var(--card);
 }
 

@@ -70,6 +70,14 @@ function updateLastBuilt() {
   els.lastUpdated.title = state.lastUpdated;
 }
 
+function updateStickyOffsets() {
+  const header = document.querySelector("header");
+  const filterPanel = document.querySelector(".filters-panel");
+  const root = document.documentElement;
+  if (header) root.style.setProperty("--header-h", `${header.offsetHeight}px`);
+  if (filterPanel) root.style.setProperty("--filter-h", `${filterPanel.offsetHeight}px`);
+}
+
 function debounce(fn, ms = 150) {
   let timer;
   return (...args) => {
@@ -683,5 +691,7 @@ document.addEventListener("keydown", (e) => {
 setInterval(updateLastBuilt, 60_000);
 
 // Initialize
+updateStickyOffsets();
+window.addEventListener("resize", debounce(updateStickyOffsets, 100));
 checkFirstRun();
 loadCatalog();
