@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
   <meta name="description" content="Browse and search Rock Band 3 songs from your RPCS3 library" />
   <title>Gig-E's Rock Band Songs DB</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -14,7 +15,10 @@
     <h1>Gig-E's Rock Band Songs DB</h1>
     <div class="badge" id="status">Loading catalog…</div>
     <div class="meta" id="last-updated">Last built: —</div>
-    <button class="settings-btn" id="settings-btn">⚙️ Settings</button>
+    <div class="header-actions">
+      <a href="admin.html" class="admin-link">⚙️ Admin</a>
+      <button class="settings-btn" id="settings-btn">Settings</button>
+    </div>
   </header>
 
   <main>
@@ -58,14 +62,26 @@
         </div>
       </div>
       <div class="notice" id="notice"></div>
+      <div class="pack-warning" id="pack-warning" style="display: none;">
+        ⚠️ You have <strong id="pack-warning-count">0</strong> packs.
+        <a href="admin.html">Consider merging packs</a> to improve RPCS3 loading times.
+      </div>
     </section>
 
     <section class="panel">
+      <div class="deletion-controls" id="deletion-controls">
+        <span class="selection-info" id="selection-info">0 songs selected</span>
+        <div class="deletion-buttons">
+          <button class="ghost" id="select-pack">Select All in Pack...</button>
+          <button class="danger" id="delete-selected" disabled>Delete Selected</button>
+        </div>
+      </div>
       <div class="badge" id="count">0 songs</div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th><input type="checkbox" id="select-all" title="Select/deselect all" /></th>
               <th>Artist</th>
               <th>Title</th>
               <th>Album</th>
@@ -104,6 +120,62 @@
           <button class="primary" id="save-settings">Save & Rebuild</button>
           <button class="ghost" id="validate-path">Validate Path</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="delete-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>⚠️ Confirm Deletion</h2>
+        <button class="modal-close" id="delete-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="warning-box">
+          <p><strong>You are about to permanently delete <span id="delete-count">0</span> songs.</strong></p>
+          <p>This will free approximately <span id="delete-size">calculating...</span> of disk space.</p>
+          <p>Song entries will be removed from songs.dta files and song folders will be deleted.</p>
+        </div>
+
+        <div class="delete-preview" id="delete-preview">
+          <!-- Song list populated by JS -->
+        </div>
+
+        <div class="deletion-details">
+          <h4>What will be deleted:</h4>
+          <ul>
+            <li>Song entries from songs.dta (backup created)</li>
+            <li>Song folders with .mid, .mogg, and image files</li>
+          </ul>
+          <h4>Backups created:</h4>
+          <ul>
+            <li>songs.dta → songs.dta.backup.[timestamp]</li>
+            <li>Folders → [name].deleted_[timestamp]</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="danger primary" id="confirm-delete">Delete Songs</button>
+        <button class="ghost" id="cancel-delete">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="pack-select-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Select All Songs in Pack</h2>
+        <button class="modal-close" id="pack-select-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Choose a pack to select all its songs:</p>
+        <select id="pack-selector" size="10" style="width: 100%; margin-top: 12px;">
+          <!-- Populated by JS -->
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="primary" id="confirm-pack-select">Select</button>
+        <button class="ghost" id="cancel-pack-select">Cancel</button>
       </div>
     </div>
   </div>

@@ -3,6 +3,7 @@ const state = {
   filtered: [],
   sources: [],
   lastUpdated: null,
+  selectedSongs: new Set(),
 };
 
 const els = {
@@ -29,6 +30,24 @@ const els = {
   pathStatus: document.getElementById("path-status"),
   saveSettings: document.getElementById("save-settings"),
   validatePath: document.getElementById("validate-path"),
+  selectAll: document.getElementById("select-all"),
+  selectionInfo: document.getElementById("selection-info"),
+  deleteSelected: document.getElementById("delete-selected"),
+  deleteModal: document.getElementById("delete-modal"),
+  deleteClose: document.getElementById("delete-close"),
+  deleteCount: document.getElementById("delete-count"),
+  deletePreview: document.getElementById("delete-preview"),
+  deleteSize: document.getElementById("delete-size"),
+  confirmDelete: document.getElementById("confirm-delete"),
+  cancelDelete: document.getElementById("cancel-delete"),
+  selectPack: document.getElementById("select-pack"),
+  packSelectModal: document.getElementById("pack-select-modal"),
+  packSelector: document.getElementById("pack-selector"),
+  confirmPackSelect: document.getElementById("confirm-pack-select"),
+  cancelPackSelect: document.getElementById("cancel-pack-select"),
+  packSelectClose: document.getElementById("pack-select-close"),
+  packWarning: document.getElementById("pack-warning"),
+  packWarningCount: document.getElementById("pack-warning-count"),
 };
 
 function debounce(fn, ms = 150) {
@@ -83,7 +102,21 @@ function renderTable() {
   state.filtered.forEach((song) => {
     const tr = document.createElement("tr");
     if (isEurovisionSong(song)) tr.classList.add("row-highlight");
-    tr.innerHTML = `
+    if (state.selectedSongs.has(song.song_key)) tr.classList.add("selected");
+
+    // Checkbox cell
+    const checkboxTd = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.selectedSongs.has(song.song_key);
+    checkbox.addEventListener("change", (e) => {
+      toggleSongSelection(song.song_key, e.target.checked);
+    });
+    checkboxTd.appendChild(checkbox);
+    tr.appendChild(checkboxTd);
+
+    // Other cells
+    tr.innerHTML += `
       <td>${escapeHtml(song.artist)}</td>
       <td>${escapeHtml(song.name)}</td>
       <td>${escapeHtml(song.album)}</td>
@@ -100,6 +133,7 @@ function renderTable() {
   renderMobileCards();
 
   els.count.textContent = `${state.filtered.length} songs`;
+  updateSelectionUI();
 }
 
 function renderMobileCards() {
@@ -336,6 +370,19 @@ async function checkFirstRun() {
   }
 }
 
+// Show pack warning banner if >50 packs
+function showPackWarning() {
+  const packs = [...new Set(state.songs.map(s => s.pack_name))];
+  const packCount = packs.length;
+
+  if (packCount > 50) {
+    els.packWarning.style.display = "block";
+    els.packWarningCount.textContent = packCount;
+  } else {
+    els.packWarning.style.display = "none";
+  }
+}
+
 async function loadCatalog() {
   try {
     const res = await fetch("./catalog.json", { cache: "no-store" });
@@ -354,6 +401,7 @@ async function loadCatalog() {
     state.filtered = [...state.songs];
     renderSources();
     filterSongs();
+    showPackWarning();
     setStatus("Loaded catalog.json");
   } catch (err) {
     setStatus("Unable to load catalog.json. Run the catalog server or build_catalog.py.");
@@ -376,6 +424,178 @@ async function updateFromServer() {
   }
 }
 
+// Selection management functions
+function toggleSongSelection(songKey, checked) {
+  if (checked) {
+    state.selectedSongs.add(songKey);
+  } else {
+    state.selectedSongs.delete(songKey);
+  }
+  updateSelectionUI();
+  renderTable();
+}
+
+function toggleSelectAll(checked) {
+  state.selectedSongs.clear();
+  if (checked) {
+    state.filtered.forEach((s) => state.selectedSongs.add(s.song_key));
+  }
+  updateSelectionUI();
+  renderTable();
+}
+
+function updateSelectionUI() {
+  const count = state.selectedSongs.size;
+  els.selectionInfo.textContent = `${count} song${count !== 1 ? "s" : ""} selected`;
+  els.deleteSelected.disabled = count === 0;
+
+  // Update select-all checkbox
+  const allSelected =
+    state.filtered.length > 0 &&
+    state.filtered.every((s) => state.selectedSongs.has(s.song_key));
+  els.selectAll.checked = allSelected;
+  els.selectAll.indeterminate = !allSelected && count > 0;
+}
+
+function clearSelection() {
+  state.selectedSongs.clear();
+  updateSelectionUI();
+  renderTable();
+}
+
+// Deletion flow functions
+function openDeleteModal() {
+  if (state.selectedSongs.size === 0) return;
+
+  const count = state.selectedSongs.size;
+  els.deleteCount.textContent = count;
+
+  // Build preview
+  const selected = state.songs.filter((s) => state.selectedSongs.has(s.song_key));
+  const html = selected
+    .map((s) => `<div>${escapeHtml(s.artist)} - ${escapeHtml(s.name)}</div>`)
+    .join("");
+  els.deletePreview.innerHTML = html;
+
+  els.deleteModal.classList.add("active");
+}
+
+function closeDeleteModal() {
+  els.deleteModal.classList.remove("active");
+}
+
+async function executeDeletion() {
+  const songKeys = Array.from(state.selectedSongs);
+
+  try {
+    els.confirmDelete.disabled = true;
+    els.confirmDelete.textContent = "Deleting...";
+
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song_keys: songKeys }),
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      throw new Error(result.error || "Deletion failed");
+    }
+
+    // Success
+    closeDeleteModal();
+    clearSelection();
+    await loadCatalog(); // Reload catalog
+
+    // Show summary
+    els.notice.textContent = result.summary;
+    els.notice.className = "notice";
+    setStatus("Deletion complete");
+
+    if (result.results.total_deleted < songKeys.length) {
+      console.warn("Partial deletion:", result.results);
+      els.notice.textContent += " (Some songs could not be deleted - check console)";
+    }
+  } catch (err) {
+    els.notice.textContent = `Deletion failed: ${err.message}`;
+    els.notice.className = "notice";
+    console.error("Deletion error:", err);
+  } finally {
+    els.confirmDelete.disabled = false;
+    els.confirmDelete.textContent = "Delete Songs";
+  }
+}
+
+// Backup management functions
+
+// Pack selection functions
+function openPackSelectModal() {
+  // Get unique packs from filtered songs
+  const packs = [...new Set(state.filtered.map((s) => s.pack_name))].sort();
+
+  els.packSelector.innerHTML = packs
+    .map((pack) => {
+      const count = state.filtered.filter((s) => s.pack_name === pack).length;
+      return `<option value="${escapeHtml(pack)}">${escapeHtml(pack)} (${count} songs)</option>`;
+    })
+    .join("");
+
+  els.packSelectModal.classList.add("active");
+}
+
+function closePackSelectModal() {
+  els.packSelectModal.classList.remove("active");
+}
+
+function selectAllInPack() {
+  const selectedPack = els.packSelector.value;
+  if (!selectedPack) return;
+
+  state.filtered.forEach((song) => {
+    if (song.pack_name === selectedPack) {
+      state.selectedSongs.add(song.song_key);
+    }
+  });
+
+  updateSelectionUI();
+  renderTable();
+  closePackSelectModal();
+}
+
+
+
+
+// Update openDeleteModal to calculate size
+const originalOpenDeleteModal = openDeleteModal;
+async function openDeleteModal() {
+  if (state.selectedSongs.size === 0) return;
+
+  const count = state.selectedSongs.size;
+  els.deleteCount.textContent = count;
+  els.deleteSize.textContent = "calculating...";
+
+  // Build preview
+  const selected = state.songs.filter((s) => state.selectedSongs.has(s.song_key));
+  const html = selected
+    .map((s) => `<div>${escapeHtml(s.artist)} - ${escapeHtml(s.name)}</div>`)
+    .join("");
+  els.deletePreview.innerHTML = html;
+
+  els.deleteModal.classList.add("active");
+
+  // Calculate size asynchronously
+  try {
+    const songKeys = Array.from(state.selectedSongs);
+    // Create a rough estimate based on song files
+    const avgSongSize = 50 * 1024 * 1024; // Estimate 50MB per song
+    const estimatedSize = songKeys.length * avgSongSize;
+    els.deleteSize.textContent = formatBytes(estimatedSize);
+  } catch (err) {
+    els.deleteSize.textContent = "unknown";
+  }
+}
+
 // Debounced search, immediate filter for dropdowns
 els.search.addEventListener("input", debounce(filterSongs, 200));
 ["artist", "title", "type", "pack", "year", "genre", "eurovision"].forEach((id) => {
@@ -390,6 +610,19 @@ els.settingsClose.addEventListener("click", closeSettings);
 els.validatePath.addEventListener("click", validatePath);
 els.saveSettings.addEventListener("click", saveSettings);
 
+// Deletion UI listeners
+els.selectAll.addEventListener("change", (e) => toggleSelectAll(e.target.checked));
+els.deleteSelected.addEventListener("click", openDeleteModal);
+els.selectPack.addEventListener("click", openPackSelectModal);
+els.confirmDelete.addEventListener("click", executeDeletion);
+els.cancelDelete.addEventListener("click", closeDeleteModal);
+els.deleteClose.addEventListener("click", closeDeleteModal);
+
+// Pack selection listeners
+els.confirmPackSelect.addEventListener("click", selectAllInPack);
+els.cancelPackSelect.addEventListener("click", closePackSelectModal);
+els.packSelectClose.addEventListener("click", closePackSelectModal);
+
 // Close modal when clicking outside
 els.settingsModal.addEventListener("click", (e) => {
   if (e.target === els.settingsModal) {
@@ -397,10 +630,30 @@ els.settingsModal.addEventListener("click", (e) => {
   }
 });
 
+els.deleteModal.addEventListener("click", (e) => {
+  if (e.target === els.deleteModal) {
+    closeDeleteModal();
+  }
+});
+
+els.packSelectModal.addEventListener("click", (e) => {
+  if (e.target === els.packSelectModal) {
+    closePackSelectModal();
+  }
+});
+
 // Close modal with Escape key
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && els.settingsModal.classList.contains("active")) {
-    closeSettings();
+  if (e.key === "Escape") {
+    if (els.settingsModal.classList.contains("active")) {
+      closeSettings();
+    }
+    if (els.deleteModal.classList.contains("active")) {
+      closeDeleteModal();
+    }
+    if (els.packSelectModal.classList.contains("active")) {
+      closePackSelectModal();
+    }
   }
 });
 

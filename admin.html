@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
+  <meta name="description" content="Administrative tools for Rock Band database management" />
+  <title>Admin - Gig-E's Rock Band Songs DB</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Admin Panel</h1>
+    <div class="badge" id="status">Loading catalog…</div>
+    <div class="meta" id="last-updated">Last built: —</div>
+    <a href="index.html" class="back-link">← Back to Song Browser</a>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="backup-header">
+        <h3>Backup Management</h3>
+        <div class="backup-actions">
+          <button class="ghost" id="refresh-backups">Refresh</button>
+          <button class="ghost" id="cleanup-backups">Cleanup Old Backups</button>
+        </div>
+      </div>
+      <div class="backup-stats" id="backup-stats">
+        Loading backups...
+      </div>
+      <div class="backup-lists">
+        <div class="backup-section">
+          <h4>DTA File Backups</h4>
+          <div id="dta-backups" class="backup-list"></div>
+        </div>
+        <div class="backup-section">
+          <h4>Deleted Song Folders</h4>
+          <div id="folder-backups" class="backup-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="duplicates-panel">
+      <div class="duplicates-header">
+        <h3>Duplicate Detection</h3>
+        <div class="duplicates-actions">
+          <button id="find-duplicates">Find Duplicates</button>
+        </div>
+      </div>
+
+      <div class="duplicates-stats" id="duplicates-stats">
+        Click "Find Duplicates" to scan for duplicate songs
+      </div>
+
+      <div id="duplicates-results" class="duplicates-results">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <section class="panel" id="merge-panel">
+      <div class="merge-header">
+        <h3>Pack Merging</h3>
+        <button id="toggle-merge-info" class="ghost">ℹ️ Info</button>
+      </div>
+
+      <div id="merge-info" class="merge-info" style="display: none;">
+        <p><strong>Why merge packs?</strong></p>
+        <p>RPCS3 loads each pack separately. Merging reduces pack count and can significantly improve loading times.</p>
+        <p><strong>Recommended:</strong> Use when you have 50+ packs</p>
+      </div>
+
+      <div class="merge-stats" id="merge-stats">
+        You have <span id="pack-count">0</span> packs in your catalog
+      </div>
+
+      <div class="merge-controls">
+        <div class="merge-selector-wrap">
+          <label for="merge-pack-selector">Select packs to merge (Ctrl/Cmd+Click for multiple):</label>
+          <select id="merge-pack-selector" multiple size="10">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+
+        <div class="merge-settings">
+          <div>
+            <label for="merged-pack-name">Merged pack name:</label>
+            <input type="text" id="merged-pack-name" placeholder="MergedPack01" />
+            <div class="setting-hint">No spaces allowed</div>
+          </div>
+
+          <div class="inline">
+            <input type="checkbox" id="delete-source-packs" checked />
+            <label for="delete-source-packs">Delete source packs after merge</label>
+          </div>
+
+          <div class="merge-actions">
+            <button id="validate-merge" class="ghost">Validate</button>
+            <button id="execute-merge" disabled>Merge Packs</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="merge-validation-result" class="merge-validation-result">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+  </main>
+
+  <div class="modal" id="cleanup-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Cleanup Old Backups</h2>
+        <button class="modal-close" id="cleanup-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Remove backup files older than:</p>
+        <div class="setting-group">
+          <select id="cleanup-days">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+        <p style="margin-top: 16px; font-size: 13px; color: var(--slate);">
+          This will permanently delete DTA backup files (songs.dta.backup.*) and deleted song folders (*.deleted_*) older than the selected period.
+        </p>
+      </div>
+      <div class="modal-actions">
+        <button class="danger primary" id="confirm-cleanup">Cleanup</button>
+        <button class="ghost" id="cancel-cleanup">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
