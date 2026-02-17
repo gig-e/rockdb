@@ -662,69 +662,76 @@ def patch_song_metadata(dta_path: Path, song_key: str, fields: dict) -> dict:
 
 def find_duplicates(catalog: list[dict]) -> dict:
     """
-    Group songs by (artist, name, album) to find duplicates.
+    Find duplicate songs using two-pass detection:
 
-    Args:
-        catalog: List of song dictionaries from catalog.json
+    Pass 1 — song_id match (confirmed): songs sharing a non-zero numeric
+    song_id are definitively the same song, even when metadata differs
+    (e.g. one version has album set, the other doesn't).
 
-    Returns:
-        {
-            'duplicate_groups': [
-                {
-                    'artist': str, 'name': str, 'album': str,
-                    'songs': [song_dict, ...],  # Sorted by priority
-                    'recommended_keep': song_key,
-                    'recommended_delete': [song_key, ...],
-                },
-                ...
-            ],
-            'total_duplicates': int,
-            'total_groups': int,
-        }
+    Pass 2 — metadata match (possible): remaining songs grouped by
+    normalised (artist, name, album) as before.
+
+    Each group includes a 'match_type' field: 'song_id' or 'metadata'.
     """
     from collections import defaultdict
 
-    # Priority mapping (lower number = higher priority)
     PRIORITY = {'disc': 1, 'export': 2, 'dlc': 3, 'custom': 4, 'other': 5}
 
-    # Normalize and group songs by (artist, name, album)
-    groups = defaultdict(list)
-    for song in catalog:
-        artist = (song.get('artist') or '').strip().lower()
-        name = (song.get('name') or '').strip().lower()
-        album = (song.get('album') or '').strip().lower()
-
-        # Skip songs missing critical fields
-        if not artist or not name:
-            continue
-
-        key = (artist, name, album)
-        groups[key].append(song)
-
-    # Filter to duplicates only (2+ songs per group)
-    duplicate_groups = []
-    total_duplicates = 0
-
-    for key, songs in groups.items():
-        if len(songs) < 2:
-            continue
-
-        # Sort by priority (disc first, custom last)
-        songs_sorted = sorted(
-            songs,
-            key=lambda s: (PRIORITY.get(s.get('pack_type'), 99), s.get('song_key', ''))
-        )
-
-        duplicate_groups.append({
+    def make_group(songs_sorted, match_type):
+        return {
             'artist': songs_sorted[0].get('artist', ''),
             'name': songs_sorted[0].get('name', ''),
             'album': songs_sorted[0].get('album', ''),
             'songs': songs_sorted,
             'recommended_keep': songs_sorted[0]['song_key'],
             'recommended_delete': [s['song_key'] for s in songs_sorted[1:]],
-        })
+            'match_type': match_type,
+        }
 
-        total_duplicates += len(songs) - 1  # Don't count the one we keep
+    def sort_songs(songs):
+        return sorted(
+            songs,
+            key=lambda s: (PRIORITY.get(s.get('pack_type'), 99), s.get('song_key', ''))
+        )
+
+    duplicate_groups = []
+    total_duplicates = 0
+    seen_keys = set()  # song_keys already placed in a group
+
+    # --- Pass 1: group by song_id ---
+    id_groups = defaultdict(list)
+    for song in catalog:
+        sid = song.get('song_id')
+        if sid and isinstance(sid, int) and sid > 0:
+            id_groups[sid].append(song)
+
+    for songs in id_groups.values():
+        if len(songs) < 2:
+            continue
+        songs_sorted = sort_songs(songs)
+        for s in songs_sorted:
+            seen_keys.add(s['song_key'])
+        duplicate_groups.append(make_group(songs_sorted, 'song_id'))
+        total_duplicates += len(songs) - 1
+
+    # --- Pass 2: group remaining songs by (artist, name, album) ---
+    meta_groups = defaultdict(list)
+    for song in catalog:
+        if song.get('song_key') in seen_keys:
+            continue
+        artist = (song.get('artist') or '').strip().lower()
+        name = (song.get('name') or '').strip().lower()
+        album = (song.get('album') or '').strip().lower()
+        if not artist or not name:
+            continue
+        meta_groups[(artist, name, album)].append(song)
+
+    for songs in meta_groups.values():
+        if len(songs) < 2:
+            continue
+        songs_sorted = sort_songs(songs)
+        duplicate_groups.append(make_group(songs_sorted, 'metadata'))
+        total_duplicates += len(songs) - 1
 
     return {
         'duplicate_groups': duplicate_groups,

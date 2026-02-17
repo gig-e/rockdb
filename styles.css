@@ -1154,6 +1154,34 @@ tbody tr.selected {
   vertical-align: middle;
 }
 
+.match-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.match-confirmed {
+  background: rgba(34, 139, 34, 0.15);
+  border: 1px solid #228b22;
+  color: #228b22;
+}
+
+.match-possible {
+  background: rgba(255, 180, 0, 0.15);
+  border: 1px solid var(--sun);
+  color: var(--sun);
+}
+
+.duplicate-possible {
+  border-color: var(--sun);
+  opacity: 0.9;
+}
+
 .duplicate-actions {
   display: flex;
   gap: 8px;

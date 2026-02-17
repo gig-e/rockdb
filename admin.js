@@ -314,12 +314,17 @@ function renderDuplicates() {
   const html = groups.map((group, groupIdx) => {
     const keepSong = group.songs[0];
     const deleteSongs = group.songs.slice(1);
+    const isConfirmed = group.match_type === 'song_id';
+    const matchBadge = isConfirmed
+      ? '<span class="match-badge match-confirmed" title="Same song_id in both DTA files — safe to delete">✓ Confirmed (same song ID)</span>'
+      : '<span class="match-badge match-possible" title="Same artist/title/album — verify before deleting">⚠ Possible (same metadata)</span>';
     return `
-      <div class="duplicate-group">
+      <div class="duplicate-group ${isConfirmed ? '' : 'duplicate-possible'}">
         <div class="duplicate-header">
           <div class="duplicate-title">
             <strong>${escapeHtml(group.artist)}</strong> — ${escapeHtml(group.name)}
             ${group.album ? `<span class="duplicate-album">(${escapeHtml(group.album)})</span>` : ''}
+            ${matchBadge}
           </div>
           <div class="duplicate-meta">
             ${group.songs.length} version${group.songs.length !== 1 ? 's' : ''} •
