@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
 import sys
@@ -241,35 +242,71 @@ def build_catalog():
 
     all_songs.sort(key=lambda s: (to_str(s.get("artist", "")), to_str(s.get("name", ""))))
 
-    # --- Deduplicate by song_id ---
-    # Songs sharing a non-zero song_id are the same track stored in multiple packs.
-    # Keep the highest-priority version; record dropped copies for admin cleanup.
-    best_by_id = {}
+    # Fields that can be inherited from a lower-priority duplicate into the kept version
+    _MERGE_FIELDS = ('year', 'album', 'genre', 'sub_genre', 'decade')
+
+    def _best_of(songs):
+        """Return highest-priority song from a group; inherit missing fields from the rest."""
+        best = min(songs, key=_dedup_priority)
+        for song in songs:
+            if song is not best:
+                for f in _MERGE_FIELDS:
+                    if not best.get(f) and song.get(f):
+                        best[f] = song[f]
+        return best
+
+    def _make_dropped(song, kept_pack):
+        return {
+            'song_key':    song['song_key'],
+            'name':        song['name'],
+            'artist':      song['artist'],
+            'source_file': song['source_file'],
+            'pack_name':   song['pack_name'],
+            'kept_pack':   kept_pack,
+        }
+
+    dropped = []
+
+    # --- Pass 1: deduplicate by song_id ---
+    # Definitive match: same numeric song_id = same track regardless of metadata.
+    id_groups = defaultdict(list)
+    for song in all_songs:
+        sid = song.get('song_id')
+        if sid and isinstance(sid, int) and sid > 0:
+            id_groups[sid].append(song)
+
+    id_best = {sid: _best_of(songs) for sid, songs in id_groups.items() if len(songs) > 1}
+
+    after_id = []
     for song in all_songs:
         sid = song.get('song_id')
         if not (sid and isinstance(sid, int) and sid > 0):
-            continue
-        existing = best_by_id.get(sid)
-        if existing is None or _dedup_priority(song) < _dedup_priority(existing):
-            best_by_id[sid] = song
+            after_id.append(song)
+        elif sid not in id_best:
+            after_id.append(song)
+        elif id_best[sid] is song:
+            after_id.append(song)
+        else:
+            dropped.append(_make_dropped(song, id_best[sid]['pack_name']))
+
+    # --- Pass 2: deduplicate by song_key ---
+    # Same song_key in different packs = same track (catches songs without song_id,
+    # e.g. Beatles Rock Band DLC where song_id may not be present in the DTA).
+    key_groups = defaultdict(list)
+    for song in after_id:
+        key_groups[song['song_key']].append(song)
+
+    key_best = {k: _best_of(songs) for k, songs in key_groups.items() if len(songs) > 1}
 
     kept = []
-    dropped = []
-    for song in all_songs:
-        sid = song.get('song_id')
-        if not (sid and isinstance(sid, int) and sid > 0):
+    for song in after_id:
+        sk = song['song_key']
+        if sk not in key_best:
             kept.append(song)
-        elif best_by_id[sid] is song:
+        elif key_best[sk] is song:
             kept.append(song)
         else:
-            dropped.append({
-                'song_key':   song['song_key'],
-                'name':       song['name'],
-                'artist':     song['artist'],
-                'source_file': song['source_file'],
-                'pack_name':  song['pack_name'],
-                'kept_pack':  best_by_id[sid]['pack_name'],
-            })
+            dropped.append(_make_dropped(song, key_best[sk]['pack_name']))
 
     all_songs = kept
 
