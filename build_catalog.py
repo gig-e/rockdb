@@ -298,15 +298,48 @@ def build_catalog():
 
     key_best = {k: _best_of(songs) for k, songs in key_groups.items() if len(songs) > 1}
 
-    kept = []
+    after_key = []
     for song in after_id:
         sk = song['song_key']
         if sk not in key_best:
-            kept.append(song)
+            after_key.append(song)
         elif key_best[sk] is song:
-            kept.append(song)
+            after_key.append(song)
         else:
             dropped.append(_make_dropped(song, key_best[sk]['pack_name']))
+
+    # --- Pass 3: deduplicate by (artist, name, album) metadata ---
+    # Catches songs that appear in multiple packs with different song_keys
+    # and no shared song_id (e.g. Beatles DLC installed via PKG into a
+    # content-ID folder alongside a manually named DLC folder).
+    meta_groups = defaultdict(list)
+    for song in after_key:
+        artist = (song.get('artist') or '').strip().lower()
+        name = (song.get('name') or '').strip().lower()
+        album = (song.get('album') or '').strip().lower()
+        if not artist or not name:
+            meta_groups[('__no_meta__', song['song_key'], '')].append(song)
+            continue
+        meta_groups[(artist, name, album)].append(song)
+
+    meta_best = {k: _best_of(songs) for k, songs in meta_groups.items() if len(songs) > 1}
+    meta_best_ids = {id(s) for s in meta_best.values()}
+
+    kept = []
+    for song in after_key:
+        artist = (song.get('artist') or '').strip().lower()
+        name = (song.get('name') or '').strip().lower()
+        album = (song.get('album') or '').strip().lower()
+        if not artist or not name:
+            mk = ('__no_meta__', song['song_key'], '')
+        else:
+            mk = (artist, name, album)
+        if mk not in meta_best:
+            kept.append(song)
+        elif id(song) in meta_best_ids:
+            kept.append(song)
+        else:
+            dropped.append(_make_dropped(song, meta_best[mk]['pack_name']))
 
     all_songs = kept
 
@@ -327,7 +360,7 @@ def build_catalog():
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
     if dropped:
-        print(f"Deduplicated {len(dropped)} songs (same song_id in multiple packs)")
+        print(f"Deduplicated {len(dropped)} songs across all packs")
     print(f"Wrote {len(all_songs)} songs to {CATALOG_PATH}")
 
 
