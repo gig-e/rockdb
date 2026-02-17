@@ -50,6 +50,26 @@ const els = {
   packWarningCount: document.getElementById("pack-warning-count"),
 };
 
+function timeAgo(isoString) {
+  const seconds = Math.floor((Date.now() - new Date(isoString)) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+function updateLastBuilt() {
+  if (!state.lastUpdated) return;
+  els.lastUpdated.textContent = `Last built: ${timeAgo(state.lastUpdated)}`;
+  els.lastUpdated.title = state.lastUpdated;
+}
+
 function debounce(fn, ms = 150) {
   let timer;
   return (...args) => {
@@ -405,9 +425,7 @@ async function loadCatalog() {
       const meta = await metaRes.json();
       state.sources = meta.sources || [];
       state.lastUpdated = meta.generated_at;
-      if (meta.generated_at) {
-        els.lastUpdated.textContent = `Last built: ${meta.generated_at}`;
-      }
+      updateLastBuilt();
     }
     hydrateFilters();
     state.filtered = [...state.songs];
@@ -660,6 +678,9 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+// Refresh "X ago" display every minute
+setInterval(updateLastBuilt, 60_000);
 
 // Initialize
 checkFirstRun();
