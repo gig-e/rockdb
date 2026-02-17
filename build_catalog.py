@@ -213,6 +213,11 @@ def build_catalog():
             if not (name or artist):
                 continue
 
+            # Derive decade from year when the DTA doesn't supply one.
+            # Format matches Rock Band DTA convention: 'the60s', 'the00s', etc.
+            if not decade and isinstance(year, int) and year > 0:
+                decade = f"the{(year // 10 * 10) % 100:02d}s"
+
             song = {
                 "song_key": song_key,
                 "song_id": song_id,
