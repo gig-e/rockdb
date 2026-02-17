@@ -35,6 +35,12 @@ EUROVISION_KEYWORDS = ["eurovision"]
 # Pack priority for deduplication (lower = higher priority)
 PACK_PRIORITY = {'disc': 1, 'export': 2, 'dlc': 3, 'custom': 4, 'other': 5}
 
+# Static metadata overrides for songs whose DTA files omit required fields.
+# Keyed by song_key; only missing fields are filled (existing DTA data wins).
+STATIC_METADATA = {
+    'abbeyroadmedley': {'year': 1969, 'album': 'Abbey Road'},
+}
+
 
 def _dedup_priority(song):
     """Lower tuple = preferred. Tie-break: prefer human names over content-ID names."""
@@ -212,6 +218,14 @@ def build_catalog():
             song_id = get_field_int(entry, "song_id")
             if not (name or artist):
                 continue
+
+            # Apply static overrides for songs whose DTAs omit required fields.
+            if song_key in STATIC_METADATA:
+                for field, value in STATIC_METADATA[song_key].items():
+                    if field == 'year' and not year:
+                        year = value
+                    elif field == 'album' and not album:
+                        album = value
 
             # Derive decade from year when the DTA doesn't supply one.
             # Format matches Rock Band DTA convention: 'the60s', 'the00s', etc.
