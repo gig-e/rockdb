@@ -21,7 +21,7 @@ import json
 import os
 import sys
 
-from build_catalog import build_catalog
+import subprocess
 from dta_writer import (
     validate_deletion_request, remove_songs_from_dta, delete_song_folders,
     scan_backups, restore_from_backup, cleanup_old_backups, calculate_deletion_size,
@@ -31,6 +31,11 @@ from dta_writer import (
 
 ROOT = Path(__file__).resolve().parent
 CATALOG_PATH = ROOT / "catalog.json"
+
+
+def build_catalog():
+    """Run build_catalog.py as a subprocess so it always uses the current source."""
+    subprocess.run([sys.executable, str(ROOT / "build_catalog.py")], check=True)
 META_PATH = ROOT / "catalog_meta.json"
 CONFIG_PATH = ROOT / "config.json"
 
