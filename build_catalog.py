@@ -140,6 +140,10 @@ def classify_pack(pack_name: str):
         return "export"
     if "dlc" in low or "pack" in low or "rb4-to-rb2" in low:
         return "dlc"
+    # PSN/RPCS3 content IDs: 1-2 uppercase letters followed by 5+ digits
+    # e.g. O799159THEBEATLESROCKBAND3 — auto-generated DLC folder names
+    if re.match(r'^[A-Z]{1,2}\d{5,}', pack_name):
+        return "dlc"
     return "other"
 
 

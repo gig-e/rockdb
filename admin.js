@@ -277,13 +277,21 @@ function renderDuplicates() {
       return `<span class="${cls}"><strong>${label}:</strong> ${val ? escapeHtml(String(val)) : '<em>—</em>'}</span>`;
     }).join('');
 
-    const missingCount = !isKeep
+    const missingFromKeep = !isKeep
       ? META_FIELDS.filter(({ key }) => !song[key] && !!keepSong[key]).length
       : 0;
+    const canGiveToKeep = !isKeep
+      ? META_FIELDS.filter(({ key }) => !!song[key] && !keepSong[key]).length
+      : 0;
 
-    const fillBtn = missingCount > 0
+    const fillBtn = missingFromKeep > 0
       ? `<button class="ghost fill-missing-btn" onclick="fillMissingMetadata(${groupIdx}, ${songIdx})">
-           Fill ${missingCount} missing field${missingCount !== 1 ? 's' : ''} from KEEP
+           Fill ${missingFromKeep} missing field${missingFromKeep !== 1 ? 's' : ''} ← KEEP
+         </button>`
+      : '';
+    const fillToKeepBtn = canGiveToKeep > 0
+      ? `<button class="ghost fill-missing-btn" onclick="fillMissingToKeep(${groupIdx}, ${songIdx})">
+           Fill ${canGiveToKeep} missing field${canGiveToKeep !== 1 ? 's' : ''} → KEEP
          </button>`
       : '';
 
@@ -298,6 +306,7 @@ function renderDuplicates() {
           <div class="version-source">${escapeHtml(song.source_file)}</div>
           <div class="version-fields">${fieldHtml}</div>
           ${fillBtn}
+          ${fillToKeepBtn}
         </div>
       </div>`;
   };
@@ -427,6 +436,55 @@ async function fillMissingMetadata(groupIdx, songIdx) {
   } catch (err) {
     alert(`Failed to patch metadata: ${err.message}`);
     console.error('Patch error:', err);
+  }
+}
+
+async function fillMissingToKeep(groupIdx, songIdx) {
+  const group = state.duplicates.groups[groupIdx];
+  if (!group || songIdx === 0) return;
+
+  const keepSong = group.songs[0];
+  const sourceSong = group.songs[songIdx];
+  if (!sourceSong) return;
+
+  // Fields this DELETE version has that the KEEP version is missing
+  const fields = {};
+  for (const { key, dtaField } of META_FIELDS) {
+    if (sourceSong[key] && !keepSong[key]) {
+      fields[dtaField] = sourceSong[key];
+    }
+  }
+
+  if (Object.keys(fields).length === 0) {
+    alert('No fields to contribute to the KEEP version.');
+    return;
+  }
+
+  const fieldNames = Object.keys(fields).join(', ');
+  if (!confirm(
+    `Copy ${Object.keys(fields).length} field(s) from "${sourceSong.pack_name}" → KEEP version "${keepSong.pack_name}"?\n\nFields: ${fieldNames}`
+  )) return;
+
+  try {
+    const res = await fetch('/api/patch-metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        song_key: keepSong.song_key,
+        source_file: keepSong.source_file,
+        fields,
+      }),
+    });
+
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error);
+
+    const updated = result.patched.length + result.added.length;
+    await findDuplicates();
+    alert(`Updated ${updated} field(s) in the KEEP version.`);
+  } catch (err) {
+    alert(`Failed to patch metadata: ${err.message}`);
+    console.error('Fill to keep error:', err);
   }
 }
 
