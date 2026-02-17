@@ -1182,6 +1182,48 @@ tbody tr.selected {
   opacity: 0.9;
 }
 
+/* Redundant-pack dedup notice */
+.dedup-notice {
+  background: rgba(161, 64, 89, 0.08);
+  border: 1px solid var(--gradient-pink);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.dedup-notice-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dedup-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.dedup-subtitle {
+  font-weight: 400;
+  color: var(--slate);
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+.dedup-pack-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.dedup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .duplicate-actions {
   display: flex;
   gap: 8px;

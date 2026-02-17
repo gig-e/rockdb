@@ -73,10 +73,72 @@ async function loadCatalog() {
     }
 
     updatePackList();
+
+    const dedup = meta.deduplicated;
+    if (dedup && dedup.total_dropped > 0) {
+      showDedupNotice(dedup);
+    } else {
+      const n = document.getElementById('dedup-notice');
+      if (n) n.style.display = 'none';
+    }
+
     setStatus("Catalog loaded");
   } catch (err) {
     setStatus("Unable to load catalog.json");
     console.error("Failed to load catalog:", err);
+  }
+}
+
+function showDedupNotice(dedup) {
+  const notice = document.getElementById('dedup-notice');
+  if (!notice) return;
+
+  // Summarise by pack_name
+  const packCounts = {};
+  dedup.dropped_songs.forEach(s => {
+    packCounts[s.pack_name] = (packCounts[s.pack_name] || 0) + 1;
+  });
+  const packLines = Object.entries(packCounts)
+    .map(([pack, n]) => {
+      const kept = dedup.dropped_songs.find(s => s.pack_name === pack)?.kept_pack ?? '?';
+      return `<li><strong>${escapeHtml(pack)}</strong> — ${n} song${n !== 1 ? 's' : ''} `
+           + `(superseded by <strong>${escapeHtml(kept)}</strong>)</li>`;
+    }).join('');
+
+  notice.style.display = 'block';
+  notice.innerHTML = `
+    <div class="dedup-notice-inner">
+      <div class="dedup-title">
+        ⚠ ${dedup.total_dropped} redundant song file${dedup.total_dropped !== 1 ? 's' : ''} detected
+        <span class="dedup-subtitle">— same song_id exists in a higher-priority pack and was excluded from the catalog</span>
+      </div>
+      <ul class="dedup-pack-list">${packLines}</ul>
+      <div class="dedup-actions">
+        <button class="danger" onclick="cleanUpDropped()">Delete Redundant Files</button>
+        <button class="ghost" onclick="document.getElementById('dedup-notice').style.display='none'">Dismiss</button>
+      </div>
+    </div>`;
+}
+
+async function cleanUpDropped() {
+  if (!confirm(
+    'Delete all redundant song files from lower-priority packs?\n\n' +
+    'The higher-priority version of each song will be kept. Backups will be created.'
+  )) return;
+
+  try {
+    setStatus('Cleaning up redundant files...');
+    const res = await fetch('/api/delete-dropped', { method: 'POST' });
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error);
+
+    await loadCatalog();
+    alert(result.summary);
+    setStatus('Cleanup complete');
+  } catch (err) {
+    alert(`Cleanup failed: ${err.message}`);
+    console.error('Cleanup error:', err);
+    setStatus('Error');
   }
 }
 

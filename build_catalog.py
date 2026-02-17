@@ -31,6 +31,17 @@ DEV_HDD0_PATH = load_config()
 
 EUROVISION_KEYWORDS = ["eurovision"]
 
+# Pack priority for deduplication (lower = higher priority)
+PACK_PRIORITY = {'disc': 1, 'export': 2, 'dlc': 3, 'custom': 4, 'other': 5}
+
+
+def _dedup_priority(song):
+    """Lower tuple = preferred. Tie-break: prefer human names over content-ID names."""
+    type_pri = PACK_PRIORITY.get(song.get('pack_type'), 99)
+    # Content-ID pattern (e.g. O799159THEBEATLESROCKBAND3) gets lower preference
+    is_content_id = bool(re.match(r'^[A-Z]{1,2}\d{5,}', song.get('pack_name', '')))
+    return (type_pri, int(is_content_id))
+
 
 def tokenize(text: str):
     tokens = []
@@ -230,6 +241,38 @@ def build_catalog():
 
     all_songs.sort(key=lambda s: (to_str(s.get("artist", "")), to_str(s.get("name", ""))))
 
+    # --- Deduplicate by song_id ---
+    # Songs sharing a non-zero song_id are the same track stored in multiple packs.
+    # Keep the highest-priority version; record dropped copies for admin cleanup.
+    best_by_id = {}
+    for song in all_songs:
+        sid = song.get('song_id')
+        if not (sid and isinstance(sid, int) and sid > 0):
+            continue
+        existing = best_by_id.get(sid)
+        if existing is None or _dedup_priority(song) < _dedup_priority(existing):
+            best_by_id[sid] = song
+
+    kept = []
+    dropped = []
+    for song in all_songs:
+        sid = song.get('song_id')
+        if not (sid and isinstance(sid, int) and sid > 0):
+            kept.append(song)
+        elif best_by_id[sid] is song:
+            kept.append(song)
+        else:
+            dropped.append({
+                'song_key':   song['song_key'],
+                'name':       song['name'],
+                'artist':     song['artist'],
+                'source_file': song['source_file'],
+                'pack_name':  song['pack_name'],
+                'kept_pack':  best_by_id[sid]['pack_name'],
+            })
+
+    all_songs = kept
+
     SCRIPT_DIR.mkdir(exist_ok=True)
     with CATALOG_PATH.open("w", encoding="utf-8") as f:
         json.dump(all_songs, f, ensure_ascii=False, indent=2)
@@ -238,10 +281,16 @@ def build_catalog():
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "total_songs": len(all_songs),
         "sources": meta_sources,
+        "deduplicated": {
+            "total_dropped": len(dropped),
+            "dropped_songs": dropped,
+        },
     }
     with META_PATH.open("w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
+    if dropped:
+        print(f"Deduplicated {len(dropped)} songs (same song_id in multiple packs)")
     print(f"Wrote {len(all_songs)} songs to {CATALOG_PATH}")
 
 

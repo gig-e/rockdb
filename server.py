@@ -412,6 +412,51 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
+        if self.path == "/api/delete-dropped":
+            try:
+                meta = read_json(META_PATH)
+                dropped = meta.get('deduplicated', {}).get('dropped_songs', [])
+
+                if not dropped:
+                    self._send_json({"ok": True, "summary": "No redundant songs to clean up"})
+                    return
+
+                config = read_json(CONFIG_PATH)
+                dev_hdd0_path = Path(config.get("dev_hdd0_path", "")).expanduser().resolve()
+
+                # Group by source_file
+                songs_by_dta = {}
+                for song in dropped:
+                    sf = song['source_file']
+                    if sf not in songs_by_dta:
+                        songs_by_dta[sf] = []
+                    songs_by_dta[sf].append(song)
+
+                results = {'dta_results': {}, 'folder_results': {}, 'total_deleted': 0}
+
+                for source_file, songs in songs_by_dta.items():
+                    dta_path = dev_hdd0_path / source_file
+                    if not dta_path.exists():
+                        continue
+                    keys = [s['song_key'] for s in songs]
+                    dta_result = remove_songs_from_dta(dta_path, keys)
+                    results['dta_results'][source_file] = dta_result
+                    results['total_deleted'] += len(dta_result['removed'])
+
+                folder_result = delete_song_folders(dev_hdd0_path, songs_by_dta)
+                results['folder_results'] = folder_result
+
+                build_catalog()
+
+                self._send_json({
+                    "ok": True,
+                    "results": results,
+                    "summary": f"Cleaned up {results['total_deleted']} redundant songs"
+                })
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
         if self.path == "/api/merge/validate":
             try:
                 data = self._read_body()
