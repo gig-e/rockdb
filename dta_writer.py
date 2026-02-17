@@ -559,6 +559,107 @@ def calculate_deletion_size(dev_hdd0_path: Path, songs_by_dta: dict) -> int:
     return total_size
 
 
+def patch_song_metadata(dta_path: Path, song_key: str, fields: dict) -> dict:
+    """
+    Update or add metadata fields in a songs.dta entry.
+
+    Args:
+        dta_path: Path to songs.dta file
+        song_key: Song key to locate in the file
+        fields: dict of {dta_field_name: new_value}
+                e.g., {'album_name': 'Abbey Road', 'year_released': 1969}
+
+    Returns:
+        {
+            'patched': list[str],   # Fields that were replaced
+            'added': list[str],     # Fields that were inserted (didn't exist)
+            'backup_path': str|None,
+            'error': str|None
+        }
+    """
+    if not dta_path.exists():
+        return {'patched': [], 'added': [], 'backup_path': None,
+                'error': f'File not found: {dta_path}'}
+
+    try:
+        text = dta_path.read_text(encoding='utf-8', errors='ignore')
+    except Exception as e:
+        return {'patched': [], 'added': [], 'backup_path': None, 'error': str(e)}
+
+    bounds = find_song_entry_bounds(text, song_key)
+    if not bounds:
+        return {'patched': [], 'added': [], 'backup_path': None,
+                'error': f'Song entry not found in DTA: {song_key}'}
+
+    start, end = bounds
+    entry_text = text[start:end]
+
+    # Create backup before any writes
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = dta_path.parent / f"{dta_path.name}.backup.{timestamp}"
+    try:
+        backup_path.write_text(text, encoding='utf-8')
+    except Exception as e:
+        return {'patched': [], 'added': [], 'backup_path': None,
+                'error': f'Failed to create backup: {e}'}
+
+    patched = []
+    added = []
+
+    for field_name, new_value in fields.items():
+        if new_value is None or new_value == '':
+            continue
+
+        # Format the replacement value
+        if isinstance(new_value, int):
+            formatted_value = str(new_value)
+        else:
+            escaped = str(new_value).replace('\\', '\\\\').replace('"', '\\"')
+            formatted_value = f'"{escaped}"'
+
+        new_field_text = f"('{field_name}' {formatted_value})"
+
+        # Match existing field: handles quoted strings, single-quoted symbols, bare tokens
+        # ('fieldname' "quoted value") | ('fieldname' 'symbol') | ('fieldname' token)
+        pattern = re.compile(
+            r"\(\s*'?" + re.escape(field_name) + r"'?\s+(?:\"[^\"]*\"|'[^']*'|\S+)\)",
+            re.IGNORECASE
+        )
+
+        new_entry_text, count = pattern.subn(new_field_text, entry_text, count=1)
+        if count > 0:
+            entry_text = new_entry_text
+            patched.append(field_name)
+        else:
+            # Field doesn't exist — insert before the entry's closing paren
+            last_paren = entry_text.rfind(')')
+            if last_paren >= 0:
+                entry_text = (entry_text[:last_paren]
+                              + f"\n   {new_field_text}"
+                              + entry_text[last_paren:])
+                added.append(field_name)
+
+    new_text = text[:start] + entry_text + text[end:]
+
+    try:
+        dta_path.write_text(new_text, encoding='utf-8')
+    except Exception as e:
+        try:
+            backup_path.read_text(encoding='utf-8')
+            dta_path.write_text(text, encoding='utf-8')
+        except Exception:
+            pass
+        return {'patched': [], 'added': [], 'backup_path': str(backup_path.name),
+                'error': f'Failed to write DTA: {e}'}
+
+    return {
+        'patched': patched,
+        'added': added,
+        'backup_path': str(backup_path.name),
+        'error': None
+    }
+
+
 def find_duplicates(catalog: list[dict]) -> dict:
     """
     Group songs by (artist, name, album) to find duplicates.

@@ -49,11 +49,10 @@ function escapeHtml(str) {
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  if (!bytes || bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
 // Load catalog (needed for duplicates and pack merging)
@@ -235,6 +234,15 @@ async function findDuplicates() {
   }
 }
 
+// Catalog fields to compare per version + which map to patchable DTA fields
+const META_FIELDS = [
+  { key: 'album',     label: 'Album',     dtaField: 'album_name' },
+  { key: 'year',      label: 'Year',      dtaField: 'year_released' },
+  { key: 'genre',     label: 'Genre',     dtaField: 'genre' },
+  { key: 'sub_genre', label: 'Sub-genre', dtaField: 'sub_genre' },
+  { key: 'decade',    label: 'Decade',    dtaField: 'decade' },
+];
+
 function renderDuplicates() {
   const { groups, totalDuplicates, totalGroups } = state.duplicates;
 
@@ -244,57 +252,81 @@ function renderDuplicates() {
     return;
   }
 
-  els.duplicatesStats.textContent =
-    `Found ${totalDuplicates} duplicate song${totalDuplicates !== 1 ? 's' : ''} in ${totalGroups} group${totalGroups !== 1 ? 's' : ''}`;
+  const totalToFree = groups.reduce((sum, g) => sum + (g.size_to_free || 0), 0);
+  const totalDeleteKeys = groups.reduce((sum, g) => sum + g.recommended_delete.length, 0);
 
-  // Render groups
-  const html = groups.map((group, idx) => {
-    // Use index-based matching instead of song_key (handles identical song_keys)
-    const keepSong = group.songs[0];  // First song is always kept
-    const deleteSongs = group.songs.slice(1);  // Rest are deleted
+  els.duplicatesStats.innerHTML =
+    `Found <strong>${totalDuplicates}</strong> duplicate song${totalDuplicates !== 1 ? 's' : ''} ` +
+    `in <strong>${totalGroups}</strong> group${totalGroups !== 1 ? 's' : ''} ` +
+    `(${formatBytes(totalToFree)} to free) &nbsp;` +
+    `<button class="danger" onclick="deleteAllDuplicates()">Delete All ${totalDeleteKeys} Duplicates</button>`;
 
+  const renderVersion = (song, isKeep, groupIdx, songIdx, keepSong) => {
+    const badge = isKeep
+      ? '<div class="version-badge keep-badge">KEEP</div>'
+      : '<div class="version-badge delete-badge">DELETE</div>';
+
+    const fieldHtml = META_FIELDS.map(({ key, label }) => {
+      const val = song[key];
+      const keepVal = keepSong[key];
+      const isMissing = !isKeep && !val && !!keepVal;
+      const isDifferent = !isKeep && !!val && !!keepVal && String(val) !== String(keepVal);
+      let cls = 'field-item';
+      if (isMissing) cls += ' field-missing';
+      else if (isDifferent) cls += ' field-different';
+      return `<span class="${cls}"><strong>${label}:</strong> ${val ? escapeHtml(String(val)) : '<em>—</em>'}</span>`;
+    }).join('');
+
+    const missingCount = !isKeep
+      ? META_FIELDS.filter(({ key }) => !song[key] && !!keepSong[key]).length
+      : 0;
+
+    const fillBtn = missingCount > 0
+      ? `<button class="ghost fill-missing-btn" onclick="fillMissingMetadata(${groupIdx}, ${songIdx})">
+           Fill ${missingCount} missing field${missingCount !== 1 ? 's' : ''} from KEEP
+         </button>`
+      : '';
+
+    return `
+      <div class="duplicate-version ${isKeep ? 'keep-version' : 'delete-version'}">
+        ${badge}
+        <div class="version-info">
+          <div class="version-primary">
+            <span><strong>Pack:</strong> ${escapeHtml(song.pack_name)}</span>
+            <span><strong>Type:</strong> ${escapeHtml(song.pack_type)}</span>
+          </div>
+          <div class="version-source">${escapeHtml(song.source_file)}</div>
+          <div class="version-fields">${fieldHtml}</div>
+          ${fillBtn}
+        </div>
+      </div>`;
+  };
+
+  const html = groups.map((group, groupIdx) => {
+    const keepSong = group.songs[0];
+    const deleteSongs = group.songs.slice(1);
     return `
       <div class="duplicate-group">
         <div class="duplicate-header">
           <div class="duplicate-title">
-            <strong>${escapeHtml(group.artist)}</strong> - ${escapeHtml(group.name)}
+            <strong>${escapeHtml(group.artist)}</strong> — ${escapeHtml(group.name)}
             ${group.album ? `<span class="duplicate-album">(${escapeHtml(group.album)})</span>` : ''}
           </div>
           <div class="duplicate-meta">
-            ${group.songs.length} versions •
-            ${group.size_to_free ? formatBytes(group.size_to_free) + ' to free' : 'Size unknown'}
+            ${group.songs.length} version${group.songs.length !== 1 ? 's' : ''} •
+            ${group.size_to_free ? formatBytes(group.size_to_free) + ' to free' : 'size unknown'}
           </div>
         </div>
-
         <div class="duplicate-versions">
-          <div class="duplicate-version keep-version">
-            <div class="version-badge">KEEP</div>
-            <div class="version-info">
-              <div><strong>Pack:</strong> ${escapeHtml(keepSong.pack_name)}</div>
-              <div><strong>Type:</strong> ${escapeHtml(keepSong.pack_type)}</div>
-              <div><strong>Year:</strong> ${keepSong.year || 'Unknown'}</div>
-            </div>
-          </div>
-
-          ${deleteSongs.map(song => `
-            <div class="duplicate-version delete-version">
-              <div class="version-badge delete-badge">DELETE</div>
-              <div class="version-info">
-                <div><strong>Pack:</strong> ${escapeHtml(song.pack_name)}</div>
-                <div><strong>Type:</strong> ${escapeHtml(song.pack_type)}</div>
-                <div><strong>Year:</strong> ${song.year || 'Unknown'}</div>
-              </div>
-            </div>
-          `).join('')}
+          ${renderVersion(keepSong, true, groupIdx, 0, keepSong)}
+          ${deleteSongs.map((song, i) => renderVersion(song, false, groupIdx, i + 1, keepSong)).join('')}
         </div>
-
         <div class="duplicate-actions">
-          <button class="danger" onclick="deleteDuplicateGroup(${idx})">
+          <button class="danger" onclick="deleteDuplicateGroup(${groupIdx})">
             Delete ${deleteSongs.length} Duplicate${deleteSongs.length !== 1 ? 's' : ''}
           </button>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 
   els.duplicatesResults.innerHTML = html;
@@ -304,9 +336,12 @@ async function deleteDuplicateGroup(groupIdx) {
   const group = state.duplicates.groups[groupIdx];
   if (!group) return;
 
+  const keepSong = group.songs[0];
+  const keepType = keepSong?.pack_type ?? 'unknown';
+
   if (!confirm(
     `Delete ${group.recommended_delete.length} duplicate(s) of "${group.artist} - ${group.name}"?\n\n` +
-    `This will keep the ${group.songs.find(s => s.song_key === group.recommended_keep).pack_type} version and delete others.`
+    `This will keep the ${keepType} version and delete the others.`
   )) {
     return;
   }
@@ -342,6 +377,90 @@ async function deleteDuplicateGroup(groupIdx) {
   } catch (err) {
     alert(`Deletion failed: ${err.message}`);
     console.error("Deletion error:", err);
+  }
+}
+
+async function fillMissingMetadata(groupIdx, songIdx) {
+  const group = state.duplicates.groups[groupIdx];
+  if (!group) return;
+
+  const keepSong = group.songs[0];
+  const targetSong = group.songs[songIdx];
+  if (!targetSong) return;
+
+  // Build the DTA fields dict for missing values
+  const fields = {};
+  for (const { key, dtaField } of META_FIELDS) {
+    if (!targetSong[key] && keepSong[key]) {
+      fields[dtaField] = keepSong[key];
+    }
+  }
+
+  if (Object.keys(fields).length === 0) {
+    alert('No missing fields to fill from the KEEP version.');
+    return;
+  }
+
+  const fieldNames = Object.keys(fields).join(', ');
+  if (!confirm(
+    `Copy ${Object.keys(fields).length} field(s) to "${targetSong.pack_name}"?\n\n` +
+    `Fields: ${fieldNames}`
+  )) return;
+
+  try {
+    const res = await fetch('/api/patch-metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        song_key: targetSong.song_key,
+        source_file: targetSong.source_file,
+        fields,
+      }),
+    });
+
+    const result = await res.json();
+    if (!result.ok) throw new Error(result.error);
+
+    const updated = result.patched.length + result.added.length;
+    await findDuplicates();
+    alert(`Updated ${updated} field(s) successfully.`);
+  } catch (err) {
+    alert(`Failed to patch metadata: ${err.message}`);
+    console.error('Patch error:', err);
+  }
+}
+
+async function deleteAllDuplicates() {
+  if (!state.duplicates.loaded || state.duplicates.groups.length === 0) return;
+
+  const allDeleteKeys = state.duplicates.groups.flatMap(g => g.recommended_delete);
+  const totalToFree = state.duplicates.groups.reduce((sum, g) => sum + (g.size_to_free || 0), 0);
+
+  if (!confirm(
+    `Delete all ${allDeleteKeys.length} duplicate song(s) across ${state.duplicates.groups.length} group(s)?\n\n` +
+    `${formatBytes(totalToFree)} will be freed.\n\n` +
+    `The recommended version will be kept for each group.`
+  )) return;
+
+  try {
+    setStatus('Deleting all duplicates...');
+    const res = await fetch('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ song_keys: allDeleteKeys }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Deletion failed');
+
+    await loadCatalog();
+    await findDuplicates();
+    alert(result.summary);
+    setStatus('Deletion complete');
+  } catch (err) {
+    alert(`Deletion failed: ${err.message}`);
+    console.error('Delete all error:', err);
+    setStatus('Error');
   }
 }
 

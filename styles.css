@@ -1098,6 +1098,62 @@ tbody tr.selected {
   color: var(--ink-soft);
 }
 
+.version-primary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.version-source {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--slate);
+  opacity: 0.8;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.version-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.field-item {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.08);
+  border: 1px solid transparent;
+}
+
+.field-missing {
+  background: rgba(161, 64, 89, 0.15);
+  border-color: var(--gradient-pink);
+  color: var(--gradient-pink);
+}
+
+.field-different {
+  background: rgba(255, 180, 0, 0.15);
+  border-color: var(--sun);
+  color: var(--sun);
+}
+
+.fill-missing-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  margin-top: 4px;
+}
+
+.duplicates-stats button {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 4px 10px;
+  vertical-align: middle;
+}
+
 .duplicate-actions {
   display: flex;
   gap: 8px;

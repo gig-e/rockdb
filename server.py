@@ -25,7 +25,7 @@ from build_catalog import build_catalog
 from dta_writer import (
     validate_deletion_request, remove_songs_from_dta, delete_song_folders,
     scan_backups, restore_from_backup, cleanup_old_backups, calculate_deletion_size,
-    find_duplicates,
+    find_duplicates, patch_song_metadata,
     create_merged_pack, validate_merge_request
 )
 
@@ -318,6 +318,40 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"total_bytes": total_bytes})
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=500)
+            return
+
+        if self.path == "/api/patch-metadata":
+            try:
+                data = self._read_body()
+                song_key = data.get("song_key", "").strip()
+                source_file = data.get("source_file", "").strip()
+                fields = data.get("fields", {})
+
+                if not song_key or not source_file or not fields:
+                    self._send_json({
+                        "error": "song_key, source_file, and fields are required"
+                    }, status=400)
+                    return
+
+                config = read_json(CONFIG_PATH)
+                dev_hdd0_path = Path(config.get("dev_hdd0_path", "")).expanduser().resolve()
+                dta_path = dev_hdd0_path / source_file
+
+                result = patch_song_metadata(dta_path, song_key, fields)
+
+                if result['error']:
+                    self._send_json({"ok": False, "error": result['error']}, status=400)
+                    return
+
+                build_catalog()
+                self._send_json({
+                    "ok": True,
+                    "patched": result['patched'],
+                    "added": result['added'],
+                    "backup_path": result['backup_path'],
+                })
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
         if self.path == "/api/restore":
