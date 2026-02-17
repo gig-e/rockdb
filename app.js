@@ -96,6 +96,13 @@ function escapeHtml(str) {
   }[c]));
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
 function renderTable() {
   els.table.innerHTML = "";
   const frag = document.createDocumentFragment();
@@ -431,7 +438,6 @@ function toggleSongSelection(songKey, checked) {
   } else {
     state.selectedSongs.delete(songKey);
   }
-  updateSelectionUI();
   renderTable();
 }
 
@@ -464,22 +470,6 @@ function clearSelection() {
 }
 
 // Deletion flow functions
-function openDeleteModal() {
-  if (state.selectedSongs.size === 0) return;
-
-  const count = state.selectedSongs.size;
-  els.deleteCount.textContent = count;
-
-  // Build preview
-  const selected = state.songs.filter((s) => state.selectedSongs.has(s.song_key));
-  const html = selected
-    .map((s) => `<div>${escapeHtml(s.artist)} - ${escapeHtml(s.name)}</div>`)
-    .join("");
-  els.deletePreview.innerHTML = html;
-
-  els.deleteModal.classList.add("active");
-}
-
 function closeDeleteModal() {
   els.deleteModal.classList.remove("active");
 }
@@ -563,11 +553,6 @@ function selectAllInPack() {
   closePackSelectModal();
 }
 
-
-
-
-// Update openDeleteModal to calculate size
-const originalOpenDeleteModal = openDeleteModal;
 async function openDeleteModal() {
   if (state.selectedSongs.size === 0) return;
 
@@ -584,13 +569,19 @@ async function openDeleteModal() {
 
   els.deleteModal.classList.add("active");
 
-  // Calculate size asynchronously
+  // Fetch real size from server
   try {
-    const songKeys = Array.from(state.selectedSongs);
-    // Create a rough estimate based on song files
-    const avgSongSize = 50 * 1024 * 1024; // Estimate 50MB per song
-    const estimatedSize = songKeys.length * avgSongSize;
-    els.deleteSize.textContent = formatBytes(estimatedSize);
+    const res = await fetch("/api/size", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song_keys: Array.from(state.selectedSongs) }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      els.deleteSize.textContent = formatBytes(data.total_bytes);
+    } else {
+      els.deleteSize.textContent = "unknown";
+    }
   } catch (err) {
     els.deleteSize.textContent = "unknown";
   }

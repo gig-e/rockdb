@@ -300,6 +300,26 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
+        if self.path == "/api/size":
+            try:
+                data = self._read_body()
+                song_keys = data.get("song_keys", [])
+                if not song_keys or not isinstance(song_keys, list):
+                    self._send_json({"error": "song_keys array required"}, status=400)
+                    return
+                catalog = read_json(CATALOG_PATH)
+                config = read_json(CONFIG_PATH)
+                dev_hdd0_path = Path(config.get("dev_hdd0_path", "")).expanduser().resolve()
+                validation = validate_deletion_request(catalog, song_keys, dev_hdd0_path)
+                if not validation['valid']:
+                    self._send_json({"total_bytes": 0})
+                    return
+                total_bytes = calculate_deletion_size(dev_hdd0_path, validation['songs_by_dta'])
+                self._send_json({"total_bytes": total_bytes})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=500)
+            return
+
         if self.path == "/api/restore":
             try:
                 data = self._read_body()
