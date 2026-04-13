@@ -9,35 +9,33 @@ python server.py
 # Open http://127.0.0.1:8000 in your browser
 ```
 
-On first run, the app will guide you through configuration:
-1. Settings dialog opens automatically
-2. Suggests the default dev_hdd0 location
-3. Validates the path and counts song files
-4. Builds the catalog after confirmation
+On first run, a setup dialog opens automatically, suggests the default `dev_hdd0` location, validates it, and builds the catalog once you confirm.
 
 ## Features
 
-- **Settings interface** - Configure dev_hdd0 directory with real-time validation
-- **Portable** - Move the app anywhere and configure via web UI or config.json
 - Search by artist, title, album, or pack name
-- Filter by artist, title, type, pack, genre, and decade
-- Eurovision song highlighting
-- Mobile-friendly card layout (breakpoint: 768px)
-- Dark mode support (follows system preference)
-- Live catalog rebuilding from the web UI
+- Filter chips for artist, title, type, pack, genre, decade, and Eurovision — popover on desktop, bottom sheet on mobile
+- Karaoke-style request queue — anyone can add songs, the next one up shows as **NOW**
+- Admin page (`/admin.html`) for managing the queue, deleting songs, merging packs, and finding duplicates
+- Automatic backups on delete (DTA files are copied, song folders are renamed with a timestamp) and one-click restore
+- Duplicate detection across packs with priority-based recommendations (disc > export > dlc > custom)
+- Mobile card layout (breakpoint: 768px) and dark mode following system preference
+- Portable — move the folder anywhere, point `config.json` at your `dev_hdd0`, done
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `server.py` | HTTP/HTTPS server with API endpoints |
-| `build_catalog.py` | Parses `songs.dta` files and builds catalog |
-| `index.html` | Main web interface |
-| `app.js` | Frontend filtering and rendering |
-| `styles.css` | Styling with mobile and dark mode support |
-| `config.json` | Configuration (dev_hdd0 path) |
+| `server.py` | HTTP server and API endpoints |
+| `build_catalog.py` | Parses `songs.dta` files and builds the catalog |
+| `dta_writer.py` | Deletion, backup/restore, duplicate detection, and pack merging |
+| `index.html` / `app.js` | Main browser UI (read-only for guests) |
+| `admin.html` / `admin.js` | Admin panel — queue management, deletes, merges, backups |
+| `styles.css` | Styling, mobile layout, dark mode |
+| `config.json` | Your `dev_hdd0` path |
 | `catalog.json` | Generated song database |
 | `catalog_meta.json` | Build metadata |
+| `queue.json` | Persisted request queue |
 
 ## Development
 
@@ -288,13 +286,13 @@ Use the same systemd service as shown in the Caddy section.
 
 ## Configuration
 
-### Web Interface
+On first run, the app prompts for your `dev_hdd0` path, validates it, and builds the catalog. After that, rebuild any time from the admin page, or manually:
 
-Click the ⚙️ Settings button to configure the dev_hdd0 directory path. The interface validates paths in real-time and shows song file counts.
+```bash
+python build_catalog.py
+```
 
-### Manual Configuration
-
-Edit `config.json`:
+Or edit `config.json` directly:
 
 ```json
 {
@@ -302,25 +300,39 @@ Edit `config.json`:
 }
 ```
 
-Then rebuild:
-
-```bash
-python build_catalog.py
-```
-
-Or click "Update DB" in the web interface.
-
 ## API Endpoints
+
+**Catalog and configuration**
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Web interface |
 | `/api/status` | GET | Catalog metadata |
 | `/api/catalog` | GET | Full song catalog |
-| `/api/config` | GET | Current configuration with validation status |
-| `/api/config` | POST | Save configuration (JSON: `{"dev_hdd0_path": "..."}`) |
-| `/api/validate` | POST | Validate path without saving (JSON: `{"path": "..."}`) |
-| `/api/build` | POST | Rebuild catalog from songs.dta files |
+| `/api/config` | GET / POST | Read or save the `dev_hdd0` path |
+| `/api/validate` | POST | Check a path without saving it |
+| `/api/build` | POST | Rebuild catalog from `songs.dta` files |
+
+**Request queue**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/queue` | GET | Current queue |
+| `/api/queue` | POST | Add a song (`song_key`, `requested_by`) |
+| `/api/queue/remove` | POST | Remove one entry by id |
+| `/api/queue/clear` | POST | Empty the queue |
+
+**Admin operations**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/delete` | POST | Delete songs by `song_keys` — DTA rewrite + folder rename backup |
+| `/api/delete-dropped` | POST | Clean up files for songs dropped during build-time dedup |
+| `/api/backups` | GET | List DTA backups and renamed folders |
+| `/api/restore` | POST | Restore a backup |
+| `/api/cleanup` | POST | Remove backups older than N days (default 30) |
+| `/api/duplicates` | GET | Find duplicates across packs with keep/delete recommendations |
+| `/api/merge/validate` | POST | Pre-flight check for a pack merge |
+| `/api/merge` | POST | Merge multiple packs into one |
 
 ## Song Classification
 
