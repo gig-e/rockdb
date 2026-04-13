@@ -16,6 +16,7 @@
     <div class="badge" id="status">Loading catalog…</div>
     <div class="meta" id="last-updated">Last built: —</div>
     <div class="header-actions">
+      <a href="queue.html" class="admin-link">📋 Queue</a>
       <a href="admin.html" class="admin-link">⚙️ Admin</a>
       <button class="settings-btn" id="settings-btn">Settings</button>
     </div>
@@ -51,7 +52,8 @@
       </div>
       <div class="queue-name-row">
         <label for="requester-name">Your name</label>
-        <input id="requester-name" type="text" placeholder="Enter your name to request songs" maxlength="40" autocomplete="off" />
+        <input id="requester-name" type="text" placeholder="Enter your name to request songs" maxlength="40" autocomplete="off" list="requester-history" />
+        <datalist id="requester-history"></datalist>
       </div>
       <div class="queue-list" id="queue-list"></div>
     </section>
@@ -110,6 +112,6 @@
     <div class="chip-popover-options" id="chip-popover-options"></div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

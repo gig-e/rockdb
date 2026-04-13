@@ -1765,3 +1765,159 @@ tbody tr.selected {
     gap: 10px;
   }
 }
+
+/* Dedicated queue display page */
+.queue-display-panel {
+  padding: 32px;
+}
+
+.queue-now-block {
+  padding: 28px 24px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(
+    135deg,
+    rgba(240, 141, 70, 0.25) 0%,
+    rgba(161, 64, 89, 0.25) 50%,
+    rgba(35, 66, 107, 0.25) 100%
+  );
+  border: 1px solid var(--gradient-orange);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  margin-bottom: 28px;
+}
+
+.queue-display-label {
+  font-family: "Avant Garde", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--sun);
+  text-shadow: 0 1px 0 var(--warm-shadow);
+  margin-bottom: 10px;
+}
+
+.queue-display-title {
+  font-family: "Avant Garde", Helvetica, Arial, sans-serif;
+  font-size: clamp(28px, 5vw, 54px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: white;
+  text-shadow: 3px 3px 6px var(--warm-shadow);
+  margin-bottom: 6px;
+}
+
+.queue-display-artist {
+  font-size: clamp(18px, 2.6vw, 28px);
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+
+.queue-display-meta {
+  font-size: 15px;
+  color: var(--slate);
+}
+
+.queue-display-meta strong {
+  color: var(--accent-link);
+  font-weight: 700;
+}
+
+.queue-display-time {
+  margin-left: 12px;
+  opacity: 0.8;
+}
+
+.queue-display-empty {
+  padding: 40px;
+  text-align: center;
+  font-size: 20px;
+  color: var(--slate);
+  font-style: italic;
+}
+
+.queue-upnext-title {
+  font-family: "Avant Garde", Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--sun);
+  text-shadow: 0 1px 0 var(--warm-shadow);
+  margin: 0 0 16px;
+}
+
+.queue-upnext-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.queue-upnext-item {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid var(--border);
+}
+
+.queue-upnext-pos {
+  font-family: "Avant Garde", Helvetica, Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--sun);
+  text-align: center;
+}
+
+.queue-upnext-title {
+  /* scoped override inside upnext-song */
+}
+
+.queue-upnext-song .queue-upnext-title {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  text-shadow: none;
+  margin: 0 0 2px;
+}
+
+.queue-upnext-artist {
+  font-size: 14px;
+  color: var(--slate);
+}
+
+.queue-upnext-who {
+  text-align: right;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.queue-upnext-time {
+  font-size: 12px;
+  color: var(--slate);
+  margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+  .queue-display-panel {
+    padding: 18px;
+  }
+  .queue-now-block {
+    padding: 20px 16px;
+  }
+  .queue-upnext-item {
+    grid-template-columns: 36px 1fr;
+    grid-template-areas:
+      "pos song"
+      "pos who";
+    row-gap: 4px;
+  }
+  .queue-upnext-pos { grid-area: pos; font-size: 22px; }
+  .queue-upnext-song { grid-area: song; }
+  .queue-upnext-who { grid-area: who; text-align: left; }
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050505" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="Live Rock Band request queue" />
+  <title>Request Queue — Gig-E's Rock Band Songs DB</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css?v=9" />
+</head>
+<body>
+  <header>
+    <h1>Request Queue</h1>
+    <div class="badge" id="queue-count">0 in queue</div>
+    <div class="meta" id="last-refresh">Live</div>
+    <div class="header-actions">
+      <a href="index.html" class="admin-link">← Browser</a>
+      <a href="admin.html" class="admin-link">⚙️ Admin</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel queue-display-panel">
+      <div id="queue-now" class="queue-now-block"></div>
+      <h3 class="queue-upnext-title">Up Next</h3>
+      <div id="queue-upnext" class="queue-upnext-list"></div>
+    </section>
+  </main>
+
+  <script src="queue.js?v=1"></script>
+</body>
+</html>
