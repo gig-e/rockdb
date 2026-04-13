@@ -51,7 +51,20 @@ def load_queue():
         data = {}
     data.setdefault("next_id", 1)
     data.setdefault("entries", [])
+    data.setdefault("requesters", [])
     return data
+
+
+REQUESTER_HISTORY_MAX = 50
+
+
+def remember_requester(queue: dict, name: str):
+    trimmed = (name or "").strip()
+    if not trimmed or trimmed.lower() == "anonymous":
+        return
+    existing = [n for n in queue.get("requesters", []) if n.lower() != trimmed.lower()]
+    existing.insert(0, trimmed)
+    queue["requesters"] = existing[:REQUESTER_HISTORY_MAX]
 
 
 def save_queue(data):
@@ -185,6 +198,12 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=500)
             return
+        if self.path == "/api/requesters":
+            try:
+                self._send_json({"requesters": load_queue().get("requesters", [])})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=500)
+            return
         super().do_GET()
 
     def _read_body(self):
@@ -225,6 +244,7 @@ class Handler(SimpleHTTPRequestHandler):
                     }
                     queue["next_id"] += 1
                     queue["entries"].append(entry)
+                    remember_requester(queue, requested_by)
                     save_queue(queue)
                 self._send_json({"ok": True, "entry": entry, "queue": queue})
             except Exception as exc:

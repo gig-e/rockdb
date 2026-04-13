@@ -33,36 +33,18 @@ const els = {
   queueCount: document.getElementById("queue-count"),
 };
 
-const REQUESTER_HISTORY_KEY = "rockdb-requester-history";
-const REQUESTER_HISTORY_MAX = 25;
-
-function loadRequesterHistory() {
+async function refreshRequesterHistory() {
   try {
-    const raw = localStorage.getItem(REQUESTER_HISTORY_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter((s) => typeof s === "string") : [];
+    const res = await fetch("/api/requesters", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = Array.isArray(data.requesters) ? data.requesters : [];
+    els.requesterHistory.innerHTML = names
+      .map((n) => `<option value="${escapeHtml(n)}"></option>`)
+      .join("");
   } catch {
-    return [];
+    /* non-fatal */
   }
-}
-
-function renderRequesterHistory() {
-  const names = loadRequesterHistory();
-  els.requesterHistory.innerHTML = names
-    .map((n) => `<option value="${escapeHtml(n)}"></option>`)
-    .join("");
-}
-
-function rememberRequester(name) {
-  const trimmed = (name || "").trim();
-  if (!trimmed) return;
-  const existing = loadRequesterHistory().filter(
-    (n) => n.toLowerCase() !== trimmed.toLowerCase()
-  );
-  existing.unshift(trimmed);
-  const capped = existing.slice(0, REQUESTER_HISTORY_MAX);
-  localStorage.setItem(REQUESTER_HISTORY_KEY, JSON.stringify(capped));
-  renderRequesterHistory();
 }
 
 const filterState = {
@@ -575,7 +557,7 @@ async function requestSong(songKey) {
     }
     const data = await res.json();
     state.queue = data.queue;
-    rememberRequester(name);
+    refreshRequesterHistory();
     renderQueue();
   } catch (err) {
     els.notice.textContent = "Request failed (network).";
@@ -688,7 +670,7 @@ setInterval(renderQueue, 60_000);
 // Initialize
 els.search.value = "";
 els.requesterName.value = localStorage.getItem("rockdb-requester") || "";
-renderRequesterHistory();
+refreshRequesterHistory();
 updateStickyOffsets();
 window.addEventListener("resize", debounce(updateStickyOffsets, 100));
 checkFirstRun();
