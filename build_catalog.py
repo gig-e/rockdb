@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
 import re
+import time
+import urllib.parse
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
@@ -10,6 +13,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 CATALOG_PATH = SCRIPT_DIR / "catalog.json"
 META_PATH = SCRIPT_DIR / "catalog_meta.json"
+EUROVISION_CACHE_PATH = SCRIPT_DIR / "eurovision_cache.json"
+EUROVISION_CACHE_TTL = 30 * 24 * 3600  # 30 days
 
 
 def load_config():
@@ -184,13 +189,107 @@ def derive_pack(path: Path):
     return title_id, pack_name, classify_pack(pack_name)
 
 
-def is_eurovision(song):
+_EUROVISION_NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _norm_eurovision(s: str) -> str:
+    """Lowercase, strip parens content, drop non-alphanumerics."""
+    if not s:
+        return ""
+    s = re.sub(r"\([^)]*\)", " ", s.lower())
+    return _EUROVISION_NORMALIZE_RE.sub("", s)
+
+
+def fetch_eurovision_from_wikidata(timeout: int = 20):
+    """Query Wikidata for every Eurovision Song Contest entry. Returns list or None."""
+    # Two patterns cover Wikidata's mixed tagging: the dedicated
+    # "Eurovision Song Contest entry" class (Q63481999) covers some modern
+    # entries, while "participant in" (P1344) pointing at any Eurovision Song
+    # Contest edition (Q110288240) catches the bulk of the historical dataset.
+    query = (
+        "SELECT DISTINCT ?entryLabel ?performerLabel ?year WHERE { "
+        "{ ?entry wdt:P31 wd:Q63481999 . } "
+        "UNION "
+        "{ ?entry wdt:P1344 ?esc . ?esc wdt:P31 wd:Q110288240 . } "
+        "OPTIONAL { ?entry wdt:P175 ?performer . } "
+        "OPTIONAL { ?entry wdt:P585 ?date . BIND(YEAR(?date) AS ?year) } "
+        'SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } '
+        "}"
+    )
+    url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": query})
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": "rockdb-catalog/1.0 (https://github.com/gig-e/rockdb)",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        print(f"Warning: Wikidata fetch failed: {exc}", file=sys.stderr)
+        return None
+
+    out = []
+    for row in payload.get("results", {}).get("bindings", []):
+        title = row.get("entryLabel", {}).get("value", "")
+        performer = row.get("performerLabel", {}).get("value", "")
+        year = row.get("year", {}).get("value", "")
+        if title and performer:
+            out.append({"title": title, "performer": performer, "year": year})
+    return out
+
+
+def load_eurovision_index():
+    """Return a set of (normalized_artist, normalized_title) pairs for Eurovision entries.
+
+    Uses eurovision_cache.json when fresh; refetches from Wikidata when missing or
+    stale; falls back to whatever cache exists when the network call fails.
+    """
+    cache = None
+    if EUROVISION_CACHE_PATH.exists():
+        try:
+            cache = json.loads(EUROVISION_CACHE_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            cache = None
+
+    fresh = cache and (time.time() - cache.get("fetched_at", 0) < EUROVISION_CACHE_TTL)
+    if not fresh:
+        entries = fetch_eurovision_from_wikidata()
+        if entries:
+            cache = {"fetched_at": int(time.time()), "entries": entries}
+            try:
+                EUROVISION_CACHE_PATH.write_text(
+                    json.dumps(cache, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except OSError as exc:
+                print(f"Warning: could not write eurovision cache: {exc}", file=sys.stderr)
+
+    entries = (cache or {}).get("entries", [])
+    index = set()
+    for e in entries:
+        key = (_norm_eurovision(e.get("performer", "")), _norm_eurovision(e.get("title", "")))
+        if key[0] and key[1]:
+            index.add(key)
+    return index
+
+
+def is_eurovision(song, index):
+    """True if the song's (artist, title) appears in the Eurovision index, or the
+    legacy keyword scan finds 'eurovision' in any field (covers edge cases where
+    the DTA itself tags a song)."""
+    key = (_norm_eurovision(song.get("artist", "")), _norm_eurovision(song.get("name", "")))
+    if key in index:
+        return True
     hay = " ".join(str(v) for v in song.values()).lower()
     return any(k in hay for k in EUROVISION_KEYWORDS)
 
 
 def build_catalog():
     sources = sorted(DEV_HDD0_PATH.glob("**/songs.dta"))
+    eurovision_index = load_eurovision_index()
     all_songs = []
     meta_sources = []
 
@@ -247,7 +346,7 @@ def build_catalog():
                 "pack_type": pack_type,
                 "source_file": str(path.relative_to(DEV_HDD0_PATH)),
             }
-            song["is_eurovision"] = is_eurovision(song)
+            song["is_eurovision"] = is_eurovision(song, eurovision_index)
             all_songs.append(song)
             song_count += 1
 

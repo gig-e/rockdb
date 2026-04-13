@@ -14,6 +14,8 @@ ENV/
 config.json
 catalog.json
 catalog_meta.json
+eurovision_cache.json
+queue.json
 
 # IDE and editor files
 .vscode/
