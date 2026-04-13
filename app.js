@@ -177,8 +177,7 @@ function normalizeDecade(raw) {
 }
 
 function isEurovisionSong(song) {
-  const hay = Object.values(song).join(" ").toLowerCase();
-  return hay.includes("eurovision");
+  return song.is_eurovision === true;
 }
 
 function renderChips() {
@@ -219,8 +218,7 @@ function filterSongs() {
     }
     if (eurovisionOnly && !isEurovisionSong(song)) return false;
     if (!q) return true;
-    const hay = `${song.artist} ${song.name} ${song.album} ${song.pack_name} ${song.pack_type} ${song.genre}`.toLowerCase();
-    return hay.includes(q);
+    return song._hay.includes(q);
   });
   renderChips();
   renderTable();
@@ -231,6 +229,7 @@ function hydrateFilters() {
         packs = new Set(), genres = new Set(), decades = new Set();
 
   for (const s of state.songs) {
+    s._hay = `${s.artist || ""} ${s.name || ""} ${s.album || ""} ${s.pack_name || ""} ${s.pack_type || ""} ${s.genre || ""}`.toLowerCase();
     if (s.artist) artists.add(s.artist);
     if (s.name) titles.add(s.name);
     if (s.pack_type) types.add(s.pack_type);
@@ -338,9 +337,9 @@ function selectOption(value) {
 }
 
 // Settings management
-function openSettings() {
+function openSettings({ skipLoad = false } = {}) {
   els.settingsModal.classList.add("active");
-  loadCurrentConfig();
+  if (!skipLoad) loadCurrentConfig();
 }
 
 function closeSettings() {
@@ -408,8 +407,12 @@ async function saveSettings() {
 
     showPathStatus("✓ Saved! Rebuilding catalog...", "success");
 
-    // Trigger rebuild
-    await updateFromServer();
+    const buildRes = await fetch("/api/build", { method: "POST" });
+    if (!buildRes.ok) {
+      showPathStatus("✗ Catalog rebuild failed", "error");
+      return;
+    }
+    await loadCatalog();
 
     setTimeout(() => {
       closeSettings();
@@ -429,28 +432,18 @@ function showPathStatus(message, type) {
 async function checkFirstRun() {
   try {
     const res = await fetch("/api/config");
-    if (res.ok) {
-      const config = await res.json();
+    if (!res.ok) return;
+    const config = await res.json();
+    if (config.dev_hdd0_path && config.path_valid) return;
 
-      // Check if config exists and is valid
-      if (!config.dev_hdd0_path || !config.path_valid) {
-        // Show settings modal on first run or invalid config
-        openSettings();
-
-        if (config.suggested_path) {
-          els.devHdd0Path.value = config.suggested_path;
-          showPathStatus(
-            `Suggested default location. Please verify or update.`,
-            "warning"
-          );
-        } else {
-          showPathStatus(
-            "Please configure the dev_hdd0 directory location",
-            "warning"
-          );
-        }
-      }
-    }
+    els.devHdd0Path.value = config.dev_hdd0_path || config.suggested_path || "";
+    openSettings({ skipLoad: true });
+    showPathStatus(
+      config.suggested_path
+        ? "Suggested default location. Please verify or update."
+        : "Please configure the dev_hdd0 directory location",
+      "warning"
+    );
   } catch (err) {
     console.error("Failed to check first run:", err);
   }

@@ -19,9 +19,10 @@ from pathlib import Path
 import argparse
 import json
 import os
-import sys
-
 import subprocess
+import sys
+import threading
+import time
 from dta_writer import (
     validate_deletion_request, remove_songs_from_dta, delete_song_folders,
     scan_backups, restore_from_backup, cleanup_old_backups, calculate_deletion_size,
@@ -39,6 +40,9 @@ def build_catalog():
 META_PATH = ROOT / "catalog_meta.json"
 CONFIG_PATH = ROOT / "config.json"
 QUEUE_PATH = ROOT / "queue.json"
+
+# Guards queue.json against concurrent read-modify-write from ThreadingHTTPServer.
+QUEUE_LOCK = threading.Lock()
 
 
 def load_queue():
@@ -99,13 +103,9 @@ def load_config():
     config = read_json(CONFIG_PATH)
 
     if not config or not config.get("dev_hdd0_path"):
-        # First run or missing config
-        suggested = get_default_dev_hdd0_path()
-        valid, error, count = validate_dev_hdd0_path(suggested)
-
         return {
             "dev_hdd0_path": config.get("dev_hdd0_path", ""),
-            "suggested_path": suggested,
+            "suggested_path": get_default_dev_hdd0_path(),
             "path_valid": False,
         }
 
@@ -139,12 +139,6 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/status":
             self._send_json(read_json(META_PATH))
-            return
-        if self.path == "/api/catalog":
-            if not CATALOG_PATH.exists():
-                self._send_json({"error": "catalog.json not found"}, status=404)
-                return
-            self._send_json(read_json(CATALOG_PATH))
             return
         if self.path == "/api/config":
             self._send_json(load_config())
@@ -218,20 +212,20 @@ class Handler(SimpleHTTPRequestHandler):
                 if not song:
                     self._send_json({"error": "Song not found"}, status=404)
                     return
-                import time
-                queue = load_queue()
-                entry = {
-                    "id": queue["next_id"],
-                    "song_key": song_key,
-                    "artist": song.get("artist", ""),
-                    "name": song.get("name", ""),
-                    "album": song.get("album", ""),
-                    "requested_by": requested_by[:40],
-                    "requested_at": time.time(),
-                }
-                queue["next_id"] += 1
-                queue["entries"].append(entry)
-                save_queue(queue)
+                with QUEUE_LOCK:
+                    queue = load_queue()
+                    entry = {
+                        "id": queue["next_id"],
+                        "song_key": song_key,
+                        "artist": song.get("artist", ""),
+                        "name": song.get("name", ""),
+                        "album": song.get("album", ""),
+                        "requested_by": requested_by[:40],
+                        "requested_at": time.time(),
+                    }
+                    queue["next_id"] += 1
+                    queue["entries"].append(entry)
+                    save_queue(queue)
                 self._send_json({"ok": True, "entry": entry, "queue": queue})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
@@ -244,13 +238,14 @@ class Handler(SimpleHTTPRequestHandler):
                 if entry_id is None:
                     self._send_json({"error": "id required"}, status=400)
                     return
-                queue = load_queue()
-                before = len(queue["entries"])
-                queue["entries"] = [e for e in queue["entries"] if e.get("id") != entry_id]
-                if len(queue["entries"]) == before:
-                    self._send_json({"error": "Entry not found"}, status=404)
-                    return
-                save_queue(queue)
+                with QUEUE_LOCK:
+                    queue = load_queue()
+                    before = len(queue["entries"])
+                    queue["entries"] = [e for e in queue["entries"] if e.get("id") != entry_id]
+                    if len(queue["entries"]) == before:
+                        self._send_json({"error": "Entry not found"}, status=404)
+                        return
+                    save_queue(queue)
                 self._send_json({"ok": True, "queue": queue})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
@@ -258,9 +253,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         if self.path == "/api/queue/clear":
             try:
-                queue = load_queue()
-                queue["entries"] = []
-                save_queue(queue)
+                with QUEUE_LOCK:
+                    queue = load_queue()
+                    queue["entries"] = []
+                    save_queue(queue)
                 self._send_json({"ok": True, "queue": queue})
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
@@ -384,26 +380,6 @@ class Handler(SimpleHTTPRequestHandler):
 
             except Exception as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=500)
-            return
-
-        if self.path == "/api/size":
-            try:
-                data = self._read_body()
-                song_keys = data.get("song_keys", [])
-                if not song_keys or not isinstance(song_keys, list):
-                    self._send_json({"error": "song_keys array required"}, status=400)
-                    return
-                catalog = read_json(CATALOG_PATH)
-                config = read_json(CONFIG_PATH)
-                dev_hdd0_path = Path(config.get("dev_hdd0_path", "")).expanduser().resolve()
-                validation = validate_deletion_request(catalog, song_keys, dev_hdd0_path)
-                if not validation['valid']:
-                    self._send_json({"total_bytes": 0})
-                    return
-                total_bytes = calculate_deletion_size(dev_hdd0_path, validation['songs_by_dta'])
-                self._send_json({"total_bytes": total_bytes})
-            except Exception as exc:
-                self._send_json({"error": str(exc)}, status=500)
             return
 
         if self.path == "/api/patch-metadata":

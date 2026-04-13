@@ -364,7 +364,7 @@ def build_catalog():
 
     SCRIPT_DIR.mkdir(exist_ok=True)
     with CATALOG_PATH.open("w", encoding="utf-8") as f:
-        json.dump(all_songs, f, ensure_ascii=False, indent=2)
+        json.dump(all_songs, f, ensure_ascii=False, separators=(",", ":"))
 
     meta = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
