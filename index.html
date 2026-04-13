@@ -8,7 +8,7 @@
   <meta name="description" content="Browse and search Rock Band 3 songs from your RPCS3 library" />
   <title>Gig-E's Rock Band Songs DB</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <header>
@@ -24,71 +24,51 @@
   <main>
     <section class="panel filters-panel">
       <div class="controls">
-        <div>
+        <div class="search-wrap">
           <label for="search">Search</label>
-          <input id="search" type="text" placeholder="Artist, title, album, pack…" />
+          <input id="search" type="text" placeholder="Artist, title, album, pack…" autocomplete="off" />
         </div>
-        <div>
-          <label for="artist">Artist</label>
-          <select id="artist"></select>
+        <div class="chip-bar" id="chip-bar">
+          <button type="button" class="filter-chip-btn" data-filter="artist">Artist</button>
+          <button type="button" class="filter-chip-btn" data-filter="title">Title</button>
+          <button type="button" class="filter-chip-btn" data-filter="type">Type</button>
+          <button type="button" class="filter-chip-btn" data-filter="pack">Pack</button>
+          <button type="button" class="filter-chip-btn" data-filter="genre">Genre</button>
+          <button type="button" class="filter-chip-btn" data-filter="year">Decade</button>
+          <button type="button" class="filter-chip-btn" data-filter="eurovision">Eurovision</button>
         </div>
-        <div>
-          <label for="title">Title</label>
-          <select id="title"></select>
-        </div>
-        <div>
-          <label for="type">Type</label>
-          <select id="type"></select>
-        </div>
-        <div>
-          <label for="pack">Pack</label>
-          <select id="pack"></select>
-        </div>
-        <div>
-          <label for="genre">Genre</label>
-          <select id="genre"></select>
-        </div>
-        <div>
-          <label for="year">Decade</label>
-          <select id="year"></select>
-        </div>
-        <div class="inline">
-          <input id="eurovision" type="checkbox" />
-          <label for="eurovision">Eurovision</label>
-        </div>
-        <div class="inline">
-          <button id="update">Update DB</button>
+        <div class="controls-actions">
           <button class="ghost" id="reset">Reset filters</button>
         </div>
       </div>
       <div class="notice" id="notice"></div>
-      <div class="pack-warning" id="pack-warning" style="display: none;">
-        ⚠️ You have <strong id="pack-warning-count">0</strong> packs.
-        <a href="admin.html">Consider merging packs</a> to improve RPCS3 loading times.
+    </section>
+
+    <section class="panel queue-panel">
+      <div class="queue-header">
+        <h3>Request Queue</h3>
+        <span class="badge" id="queue-count">0 in queue</span>
       </div>
+      <div class="queue-name-row">
+        <label for="requester-name">Your name</label>
+        <input id="requester-name" type="text" placeholder="Enter your name to request songs" maxlength="40" autocomplete="off" />
+      </div>
+      <div class="queue-list" id="queue-list"></div>
     </section>
 
     <section class="panel">
-      <div class="deletion-controls" id="deletion-controls">
-        <span class="selection-info" id="selection-info">0 songs selected</span>
-        <div class="deletion-buttons">
-          <button class="ghost" id="select-pack">Select All in Pack...</button>
-          <button class="danger" id="delete-selected" disabled>Delete Selected</button>
-        </div>
-      </div>
       <div class="badge" id="count">0 songs</div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th><input type="checkbox" id="select-all" title="Select/deselect all" /></th>
               <th>Artist</th>
               <th>Title</th>
               <th>Album</th>
               <th>Year</th>
               <th>Type</th>
               <th>Pack</th>
-              <th>Source</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="songs-body"></tbody>
@@ -97,10 +77,6 @@
       </div>
     </section>
 
-    <section class="panel">
-      <h3>Sources</h3>
-      <div class="sources" id="sources"></div>
-    </section>
   </main>
 
   <div class="modal" id="settings-modal">
@@ -124,62 +100,16 @@
     </div>
   </div>
 
-  <div class="modal" id="delete-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>⚠️ Confirm Deletion</h2>
-        <button class="modal-close" id="delete-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="warning-box">
-          <p><strong>You are about to permanently delete <span id="delete-count">0</span> songs.</strong></p>
-          <p>This will free approximately <span id="delete-size">calculating...</span> of disk space.</p>
-          <p>Song entries will be removed from songs.dta files and song folders will be deleted.</p>
-        </div>
-
-        <div class="delete-preview" id="delete-preview">
-          <!-- Song list populated by JS -->
-        </div>
-
-        <div class="deletion-details">
-          <h4>What will be deleted:</h4>
-          <ul>
-            <li>Song entries from songs.dta (backup created)</li>
-            <li>Song folders with .mid, .mogg, and image files</li>
-          </ul>
-          <h4>Backups created:</h4>
-          <ul>
-            <li>songs.dta → songs.dta.backup.[timestamp]</li>
-            <li>Folders → [name].deleted_[timestamp]</li>
-          </ul>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button class="danger primary" id="confirm-delete">Delete Songs</button>
-        <button class="ghost" id="cancel-delete">Cancel</button>
-      </div>
+  <div class="chip-backdrop" id="chip-backdrop"></div>
+  <div class="chip-popover" id="chip-popover" role="dialog" aria-modal="true">
+    <div class="chip-popover-header">
+      <span class="chip-popover-title" id="chip-popover-title"></span>
+      <button type="button" class="chip-popover-close" id="chip-popover-close" aria-label="Close">&times;</button>
     </div>
+    <input type="text" class="chip-popover-search" id="chip-popover-search" placeholder="Filter…" autocomplete="off" />
+    <div class="chip-popover-options" id="chip-popover-options"></div>
   </div>
 
-  <div class="modal" id="pack-select-modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Select All Songs in Pack</h2>
-        <button class="modal-close" id="pack-select-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Choose a pack to select all its songs:</p>
-        <select id="pack-selector" size="10" style="width: 100%; margin-top: 12px;">
-          <!-- Populated by JS -->
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button class="primary" id="confirm-pack-select">Select</button>
-        <button class="ghost" id="cancel-pack-select">Cancel</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

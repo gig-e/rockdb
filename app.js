@@ -1,9 +1,8 @@
 const state = {
   songs: [],
   filtered: [],
-  sources: [],
   lastUpdated: null,
-  selectedSongs: new Set(),
+  queue: { entries: [], next_id: 1 },
 };
 
 const els = {
@@ -11,16 +10,14 @@ const els = {
   count: document.getElementById("count"),
   lastUpdated: document.getElementById("last-updated"),
   search: document.getElementById("search"),
-  artist: document.getElementById("artist"),
-  title: document.getElementById("title"),
-  type: document.getElementById("type"),
-  pack: document.getElementById("pack"),
-  year: document.getElementById("year"),
-  eurovision: document.getElementById("eurovision"),
-  genre: document.getElementById("genre"),
+  chipBar: document.getElementById("chip-bar"),
+  chipBackdrop: document.getElementById("chip-backdrop"),
+  chipPopover: document.getElementById("chip-popover"),
+  chipPopoverTitle: document.getElementById("chip-popover-title"),
+  chipPopoverSearch: document.getElementById("chip-popover-search"),
+  chipPopoverOptions: document.getElementById("chip-popover-options"),
+  chipPopoverClose: document.getElementById("chip-popover-close"),
   table: document.getElementById("songs-body"),
-  sources: document.getElementById("sources"),
-  update: document.getElementById("update"),
   reset: document.getElementById("reset"),
   notice: document.getElementById("notice"),
   settingsBtn: document.getElementById("settings-btn"),
@@ -30,25 +27,42 @@ const els = {
   pathStatus: document.getElementById("path-status"),
   saveSettings: document.getElementById("save-settings"),
   validatePath: document.getElementById("validate-path"),
-  selectAll: document.getElementById("select-all"),
-  selectionInfo: document.getElementById("selection-info"),
-  deleteSelected: document.getElementById("delete-selected"),
-  deleteModal: document.getElementById("delete-modal"),
-  deleteClose: document.getElementById("delete-close"),
-  deleteCount: document.getElementById("delete-count"),
-  deletePreview: document.getElementById("delete-preview"),
-  deleteSize: document.getElementById("delete-size"),
-  confirmDelete: document.getElementById("confirm-delete"),
-  cancelDelete: document.getElementById("cancel-delete"),
-  selectPack: document.getElementById("select-pack"),
-  packSelectModal: document.getElementById("pack-select-modal"),
-  packSelector: document.getElementById("pack-selector"),
-  confirmPackSelect: document.getElementById("confirm-pack-select"),
-  cancelPackSelect: document.getElementById("cancel-pack-select"),
-  packSelectClose: document.getElementById("pack-select-close"),
-  packWarning: document.getElementById("pack-warning"),
-  packWarningCount: document.getElementById("pack-warning-count"),
+  requesterName: document.getElementById("requester-name"),
+  queueList: document.getElementById("queue-list"),
+  queueCount: document.getElementById("queue-count"),
 };
+
+const filterState = {
+  search: "",
+  artist: "",
+  title: "",
+  type: "",
+  pack: "",
+  genre: "",
+  year: "",
+  eurovision: false,
+};
+
+const filterOptions = {
+  artist: [],
+  title: [],
+  type: [],
+  pack: [],
+  genre: [],
+  year: [],
+};
+
+const filterLabels = {
+  artist: "Artist",
+  title: "Title",
+  type: "Type",
+  pack: "Pack",
+  genre: "Genre",
+  year: "Decade",
+  eurovision: "Eurovision",
+};
+
+let activePopoverFilter = null;
 
 function timeAgo(isoString) {
   const seconds = Math.floor((Date.now() - new Date(isoString)) / 1000);
@@ -90,33 +104,6 @@ function setStatus(message) {
   els.status.textContent = message;
 }
 
-function optionize(select, values) {
-  const current = select.value;
-  select.innerHTML = '<option value="">All</option>';
-  values.forEach((value) => {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = value;
-    select.appendChild(opt);
-  });
-  select.value = current;
-}
-
-function renderSources() {
-  els.sources.innerHTML = "";
-  if (!state.sources.length) {
-    els.sources.textContent = "No sources loaded.";
-    return;
-  }
-  const frag = document.createDocumentFragment();
-  state.sources.forEach((src) => {
-    const div = document.createElement("div");
-    div.textContent = `${src.path} (songs: ${src.song_count})`;
-    frag.appendChild(div);
-  });
-  els.sources.appendChild(frag);
-}
-
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/[&<>"']/g, (c) => ({
@@ -124,52 +111,28 @@ function escapeHtml(str) {
   }[c]));
 }
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-}
-
 function renderTable() {
-  els.table.innerHTML = "";
   const frag = document.createDocumentFragment();
   state.filtered.forEach((song) => {
     const tr = document.createElement("tr");
     tr.dataset.songKey = song.song_key;
     if (isEurovisionSong(song)) tr.classList.add("row-highlight");
-    if (state.selectedSongs.has(song.song_key)) tr.classList.add("selected");
-
-    // Checkbox cell
-    const checkboxTd = document.createElement("td");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.selectedSongs.has(song.song_key);
-    checkbox.addEventListener("change", (e) => {
-      toggleSongSelection(song.song_key, e.target.checked);
-    });
-    checkboxTd.appendChild(checkbox);
-    tr.appendChild(checkboxTd);
-
-    // Other cells
-    tr.innerHTML += `
+    tr.innerHTML = `
       <td>${escapeHtml(song.artist)}</td>
       <td>${escapeHtml(song.name)}</td>
       <td>${escapeHtml(song.album)}</td>
       <td>${escapeHtml(song.year)}</td>
       <td>${escapeHtml(song.pack_type)}</td>
       <td>${escapeHtml(song.pack_name)}</td>
-      <td>${escapeHtml(song.source_file)}</td>
+      <td><button type="button" class="request-btn" data-song-key="${escapeHtml(song.song_key)}">Request</button></td>
     `;
     frag.appendChild(tr);
   });
-  els.table.appendChild(frag);
+  els.table.replaceChildren(frag);
 
-  // Only render the layout that's actually visible
   if (window.innerWidth < 768) renderMobileCards();
 
   els.count.textContent = `${state.filtered.length} songs`;
-  updateSelectionUI();
 }
 
 function renderMobileCards() {
@@ -194,6 +157,7 @@ function renderMobileCards() {
         ${song.pack_type ? `<span><strong>Type:</strong> ${escapeHtml(song.pack_type)}</span>` : ""}
         ${song.pack_name ? `<span><strong>Pack:</strong> ${escapeHtml(song.pack_name)}</span>` : ""}
       </div>
+      <button type="button" class="request-btn" data-song-key="${escapeHtml(song.song_key)}">Request</button>
     `;
     frag.appendChild(card);
   });
@@ -217,15 +181,24 @@ function isEurovisionSong(song) {
   return hay.includes("eurovision");
 }
 
+function renderChips() {
+  const buttons = els.chipBar.querySelectorAll(".filter-chip-btn");
+  buttons.forEach((btn) => {
+    const key = btn.dataset.filter;
+    const val = filterState[key];
+    const isActive = key === "eurovision" ? val === true : Boolean(val);
+    btn.classList.toggle("active", isActive);
+    if (key === "eurovision") {
+      btn.textContent = "Eurovision";
+    } else {
+      btn.textContent = isActive ? `${filterLabels[key]}: ${val}` : filterLabels[key];
+    }
+  });
+}
+
 function filterSongs() {
-  const q = els.search.value.trim().toLowerCase();
-  const artist = els.artist.value;
-  const title = els.title.value;
-  const type = els.type.value;
-  const pack = els.pack.value;
-  const decade = els.year.value;
-  const genre = els.genre.value;
-  const eurovisionOnly = els.eurovision.checked;
+  const q = filterState.search.trim().toLowerCase();
+  const { artist, title, type, pack, genre, year: decade, eurovision: eurovisionOnly } = filterState;
 
   state.filtered = state.songs.filter((song) => {
     if (artist && song.artist !== artist) return false;
@@ -249,11 +222,11 @@ function filterSongs() {
     const hay = `${song.artist} ${song.name} ${song.album} ${song.pack_name} ${song.pack_type} ${song.genre}`.toLowerCase();
     return hay.includes(q);
   });
+  renderChips();
   renderTable();
 }
 
 function hydrateFilters() {
-  // Single pass over all songs to collect all filter values
   const artists = new Set(), titles = new Set(), types = new Set(),
         packs = new Set(), genres = new Set(), decades = new Set();
 
@@ -264,7 +237,6 @@ function hydrateFilters() {
     if (s.pack_name) packs.add(s.pack_name);
     if (s.genre) genres.add(s.genre);
 
-    // Decade: prefer tagged decade, fall back to deriving from year
     if (s.decade) {
       const norm = normalizeDecade(s.decade.toString().replace(/'/g, ""));
       if (norm) decades.add(norm);
@@ -274,27 +246,95 @@ function hydrateFilters() {
     }
   }
 
-  optionize(els.artist, [...artists].sort());
-  optionize(els.title,  [...titles].sort());
-  optionize(els.type,   [...types].sort());
-  optionize(els.pack,   [...packs].sort());
-  optionize(els.genre,  [...genres].sort());
-  optionize(els.year,   [...decades].sort());
+  filterOptions.artist = [...artists].sort();
+  filterOptions.title  = [...titles].sort();
+  filterOptions.type   = [...types].sort();
+  filterOptions.pack   = [...packs].sort();
+  filterOptions.genre  = [...genres].sort();
+  filterOptions.year   = [...decades].sort();
 
-  // Cache pack count for showPackWarning (avoids a second full pass)
   state._packCount = packs.size;
 }
 
 function resetFilters() {
+  filterState.search = "";
+  filterState.artist = "";
+  filterState.title = "";
+  filterState.type = "";
+  filterState.pack = "";
+  filterState.year = "";
+  filterState.genre = "";
+  filterState.eurovision = false;
   els.search.value = "";
-  els.artist.value = "";
-  els.title.value = "";
-  els.type.value = "";
-  els.pack.value = "";
-  els.year.value = "";
-  els.genre.value = "";
-  els.eurovision.checked = false;
+  closePopover();
   filterSongs();
+}
+
+function positionPopover(anchorBtn) {
+  if (window.innerWidth < 768) {
+    els.chipPopover.style.top = "";
+    els.chipPopover.style.left = "";
+    return;
+  }
+  const rect = anchorBtn.getBoundingClientRect();
+  const popWidth = 280;
+  let left = rect.left;
+  const maxLeft = document.documentElement.clientWidth - popWidth - 12;
+  if (left > maxLeft) left = maxLeft;
+  if (left < 12) left = 12;
+  els.chipPopover.style.top = `${rect.bottom + 8}px`;
+  els.chipPopover.style.left = `${left}px`;
+}
+
+function renderPopoverOptions(filterKey, searchTerm = "") {
+  const options = filterOptions[filterKey] || [];
+  const term = searchTerm.trim().toLowerCase();
+  const filtered = term ? options.filter((o) => o.toLowerCase().includes(term)) : options;
+  const current = filterState[filterKey];
+
+  const parts = [`<div class="chip-popover-option${current === "" ? " selected" : ""}" data-value="">All</div>`];
+  if (filtered.length === 0) {
+    parts.push(`<div class="chip-popover-empty">No matches</div>`);
+  } else {
+    filtered.forEach((val) => {
+      const selected = current === val ? " selected" : "";
+      parts.push(`<div class="chip-popover-option${selected}" data-value="${escapeHtml(val)}">${escapeHtml(val)}</div>`);
+    });
+  }
+  els.chipPopoverOptions.innerHTML = parts.join("");
+}
+
+function openPopover(filterKey, anchorBtn) {
+  if (filterKey === "eurovision") {
+    filterState.eurovision = !filterState.eurovision;
+    filterSongs();
+    scrollToResultsOnMobile();
+    return;
+  }
+  activePopoverFilter = filterKey;
+  els.chipPopoverTitle.textContent = filterLabels[filterKey];
+  els.chipPopoverSearch.value = "";
+  renderPopoverOptions(filterKey);
+  els.chipBackdrop.classList.add("active");
+  els.chipPopover.classList.add("active");
+  positionPopover(anchorBtn);
+  if (window.innerWidth >= 768) {
+    setTimeout(() => els.chipPopoverSearch.focus(), 0);
+  }
+}
+
+function closePopover() {
+  activePopoverFilter = null;
+  els.chipBackdrop.classList.remove("active");
+  els.chipPopover.classList.remove("active");
+}
+
+function selectOption(value) {
+  if (!activePopoverFilter) return;
+  filterState[activePopoverFilter] = value;
+  closePopover();
+  filterSongs();
+  scrollToResultsOnMobile();
 }
 
 // Settings management
@@ -416,13 +456,6 @@ async function checkFirstRun() {
   }
 }
 
-// Show pack warning banner if >50 packs (uses count cached by hydrateFilters)
-function showPackWarning() {
-  const packCount = state._packCount || 0;
-  els.packWarning.style.display = packCount > 50 ? "block" : "none";
-  if (packCount > 50) els.packWarningCount.textContent = packCount;
-}
-
 async function loadCatalog() {
   try {
     const res = await fetch("./catalog.json", { cache: "no-store" });
@@ -431,15 +464,12 @@ async function loadCatalog() {
     const metaRes = await fetch("./catalog_meta.json", { cache: "no-store" });
     if (metaRes.ok) {
       const meta = await metaRes.json();
-      state.sources = meta.sources || [];
       state.lastUpdated = meta.generated_at;
       updateLastBuilt();
     }
     hydrateFilters();
     state.filtered = [...state.songs];
-    renderSources();
     filterSongs();
-    showPackWarning();
     setStatus("Loaded catalog.json");
   } catch (err) {
     setStatus("Unable to load catalog.json. Run the catalog server or build_catalog.py.");
@@ -447,192 +477,129 @@ async function loadCatalog() {
   }
 }
 
-async function updateFromServer() {
+// Queue functions
+async function loadQueue() {
   try {
-    setStatus("Building catalog...");
-    const res = await fetch("/api/build", { method: "POST" });
-    if (!res.ok) throw new Error("build failed");
-    const payload = await res.json();
-    await loadCatalog();
-    const summary = payload.summary || "Catalog updated.";
-    els.notice.textContent = summary;
-    setStatus("Update complete");
+    const res = await fetch("/api/queue", { cache: "no-store" });
+    if (!res.ok) return;
+    state.queue = await res.json();
+    renderQueue();
   } catch (err) {
-    els.notice.textContent = "Update failed. Is the catalog server running?";
+    console.error("Failed to load queue:", err);
   }
 }
 
-// Selection management functions
-function toggleSongSelection(songKey, checked) {
-  if (checked) {
-    state.selectedSongs.add(songKey);
-  } else {
-    state.selectedSongs.delete(songKey);
+function queueTimeAgo(ts) {
+  const seconds = Math.floor(Date.now() / 1000 - ts);
+  if (seconds < 30) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function renderQueue() {
+  const entries = state.queue.entries || [];
+  els.queueCount.textContent = `${entries.length} in queue`;
+  if (entries.length === 0) {
+    els.queueList.innerHTML = `<div class="queue-empty">No requests yet. Pick a song below and hit Request!</div>`;
+    return;
   }
-  // Update only the affected row rather than rebuilding the entire table
-  const row = els.table.querySelector(`tr[data-song-key="${CSS.escape(songKey)}"]`);
-  if (row) {
-    row.classList.toggle("selected", checked);
-    const cb = row.querySelector('input[type="checkbox"]');
-    if (cb) cb.checked = checked;
+  els.queueList.innerHTML = entries
+    .map((e, i) => {
+      const nowPlaying = i === 0 ? '<span class="queue-now">NOW</span>' : `<span class="queue-pos">${i + 1}</span>`;
+      return `
+        <div class="queue-item${i === 0 ? " queue-item-now" : ""}">
+          ${nowPlaying}
+          <div class="queue-item-song">
+            <div class="queue-item-title">${escapeHtml(e.name)}</div>
+            <div class="queue-item-artist">${escapeHtml(e.artist)}</div>
+          </div>
+          <div class="queue-item-meta">
+            <div class="queue-item-who">${escapeHtml(e.requested_by)}</div>
+            <div class="queue-item-time">${queueTimeAgo(e.requested_at)}</div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function requestSong(songKey) {
+  const name = (els.requesterName.value || "").trim();
+  if (!name) {
+    els.requesterName.focus();
+    els.requesterName.classList.add("needs-name");
+    setTimeout(() => els.requesterName.classList.remove("needs-name"), 1200);
+    return;
   }
-  updateSelectionUI();
-}
-
-function toggleSelectAll(checked) {
-  state.selectedSongs.clear();
-  if (checked) {
-    state.filtered.forEach((s) => state.selectedSongs.add(s.song_key));
-  }
-  updateSelectionUI();
-  renderTable();
-}
-
-function updateSelectionUI() {
-  const count = state.selectedSongs.size;
-  els.selectionInfo.textContent = `${count} song${count !== 1 ? "s" : ""} selected`;
-  els.deleteSelected.disabled = count === 0;
-
-  // Update select-all checkbox
-  const allSelected =
-    state.filtered.length > 0 &&
-    state.filtered.every((s) => state.selectedSongs.has(s.song_key));
-  els.selectAll.checked = allSelected;
-  els.selectAll.indeterminate = !allSelected && count > 0;
-}
-
-function clearSelection() {
-  state.selectedSongs.clear();
-  updateSelectionUI();
-  renderTable();
-}
-
-// Deletion flow functions
-function closeDeleteModal() {
-  els.deleteModal.classList.remove("active");
-}
-
-async function executeDeletion() {
-  const songKeys = Array.from(state.selectedSongs);
-
+  localStorage.setItem("rockdb-requester", name);
   try {
-    els.confirmDelete.disabled = true;
-    els.confirmDelete.textContent = "Deleting...";
-
-    const res = await fetch("/api/delete", {
+    const res = await fetch("/api/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ song_keys: songKeys }),
+      body: JSON.stringify({ song_key: songKey, requested_by: name }),
     });
-
-    const result = await res.json();
-
     if (!res.ok) {
-      throw new Error(result.error || "Deletion failed");
+      const err = await res.json().catch(() => ({}));
+      els.notice.textContent = `Request failed: ${err.error || "unknown"}`;
+      return;
     }
-
-    // Success
-    closeDeleteModal();
-    clearSelection();
-    await loadCatalog(); // Reload catalog
-
-    // Show summary
-    els.notice.textContent = result.summary;
-    els.notice.className = "notice";
-    setStatus("Deletion complete");
-
-    if (result.results.total_deleted < songKeys.length) {
-      console.warn("Partial deletion:", result.results);
-      els.notice.textContent += " (Some songs could not be deleted - check console)";
-    }
+    const data = await res.json();
+    state.queue = data.queue;
+    renderQueue();
   } catch (err) {
-    els.notice.textContent = `Deletion failed: ${err.message}`;
-    els.notice.className = "notice";
-    console.error("Deletion error:", err);
-  } finally {
-    els.confirmDelete.disabled = false;
-    els.confirmDelete.textContent = "Delete Songs";
+    els.notice.textContent = "Request failed (network).";
   }
 }
 
-// Backup management functions
-
-// Pack selection functions
-function openPackSelectModal() {
-  // Single pass: count songs per pack
-  const counts = {};
-  for (const s of state.filtered) {
-    counts[s.pack_name] = (counts[s.pack_name] || 0) + 1;
-  }
-  const packs = Object.keys(counts).sort();
-
-  els.packSelector.innerHTML = packs
-    .map((pack) => `<option value="${escapeHtml(pack)}">${escapeHtml(pack)} (${counts[pack]} songs)</option>`)
-    .join("");
-
-  els.packSelectModal.classList.add("active");
-}
-
-function closePackSelectModal() {
-  els.packSelectModal.classList.remove("active");
-}
-
-function selectAllInPack() {
-  const selectedPack = els.packSelector.value;
-  if (!selectedPack) return;
-
-  state.filtered.forEach((song) => {
-    if (song.pack_name === selectedPack) {
-      state.selectedSongs.add(song.song_key);
-    }
+function scrollToResultsOnMobile() {
+  if (window.innerWidth >= 768) return;
+  // Defer past the mobile browser's native "keep focused select in view" scroll,
+  // then use an absolute window.scrollTo — instant, no behavior quirks.
+  requestAnimationFrame(() => {
+    const target = els.count;
+    if (!target) return;
+    const absoluteTop = target.getBoundingClientRect().top + window.scrollY - 8;
+    window.scrollTo({ top: absoluteTop });
   });
-
-  updateSelectionUI();
-  renderTable();
-  closePackSelectModal();
 }
 
-async function openDeleteModal() {
-  if (state.selectedSongs.size === 0) return;
+els.search.addEventListener("input", debounce(() => {
+  filterState.search = els.search.value;
+  filterSongs();
+}, 200));
 
-  const count = state.selectedSongs.size;
-  els.deleteCount.textContent = count;
-  els.deleteSize.textContent = "calculating...";
-
-  // Build preview
-  const selected = state.songs.filter((s) => state.selectedSongs.has(s.song_key));
-  const html = selected
-    .map((s) => `<div>${escapeHtml(s.artist)} - ${escapeHtml(s.name)}</div>`)
-    .join("");
-  els.deletePreview.innerHTML = html;
-
-  els.deleteModal.classList.add("active");
-
-  // Fetch real size from server
-  try {
-    const res = await fetch("/api/size", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ song_keys: Array.from(state.selectedSongs) }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      els.deleteSize.textContent = formatBytes(data.total_bytes);
-    } else {
-      els.deleteSize.textContent = "unknown";
-    }
-  } catch (err) {
-    els.deleteSize.textContent = "unknown";
+els.chipBar.addEventListener("click", (e) => {
+  const btn = e.target.closest(".filter-chip-btn");
+  if (!btn) return;
+  const key = btn.dataset.filter;
+  if (btn.classList.contains("active") && key !== "eurovision") {
+    filterState[key] = "";
+    filterSongs();
+    return;
   }
-}
-
-// Debounced search, immediate filter for dropdowns
-els.search.addEventListener("input", debounce(filterSongs, 200));
-["artist", "title", "type", "pack", "year", "genre", "eurovision"].forEach((id) => {
-  els[id].addEventListener("change", filterSongs);
+  openPopover(key, btn);
 });
+
+els.chipPopoverOptions.addEventListener("click", (e) => {
+  const opt = e.target.closest(".chip-popover-option");
+  if (!opt) return;
+  selectOption(opt.dataset.value);
+});
+
+els.chipPopoverSearch.addEventListener("input", () => {
+  if (activePopoverFilter) {
+    renderPopoverOptions(activePopoverFilter, els.chipPopoverSearch.value);
+  }
+});
+
+els.chipPopoverClose.addEventListener("click", closePopover);
+els.chipBackdrop.addEventListener("click", closePopover);
+
 els.reset.addEventListener("click", resetFilters);
-els.update.addEventListener("click", updateFromServer);
 
 // Settings modal listeners
 els.settingsBtn.addEventListener("click", openSettings);
@@ -640,35 +607,22 @@ els.settingsClose.addEventListener("click", closeSettings);
 els.validatePath.addEventListener("click", validatePath);
 els.saveSettings.addEventListener("click", saveSettings);
 
-// Deletion UI listeners
-els.selectAll.addEventListener("change", (e) => toggleSelectAll(e.target.checked));
-els.deleteSelected.addEventListener("click", openDeleteModal);
-els.selectPack.addEventListener("click", openPackSelectModal);
-els.confirmDelete.addEventListener("click", executeDeletion);
-els.cancelDelete.addEventListener("click", closeDeleteModal);
-els.deleteClose.addEventListener("click", closeDeleteModal);
+// Request buttons (delegated)
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".request-btn");
+  if (!btn) return;
+  requestSong(btn.dataset.songKey);
+});
 
-// Pack selection listeners
-els.confirmPackSelect.addEventListener("click", selectAllInPack);
-els.cancelPackSelect.addEventListener("click", closePackSelectModal);
-els.packSelectClose.addEventListener("click", closePackSelectModal);
+// Persist requester name
+els.requesterName.addEventListener("input", () => {
+  localStorage.setItem("rockdb-requester", els.requesterName.value);
+});
 
 // Close modal when clicking outside
 els.settingsModal.addEventListener("click", (e) => {
   if (e.target === els.settingsModal) {
     closeSettings();
-  }
-});
-
-els.deleteModal.addEventListener("click", (e) => {
-  if (e.target === els.deleteModal) {
-    closeDeleteModal();
-  }
-});
-
-els.packSelectModal.addEventListener("click", (e) => {
-  if (e.target === els.packSelectModal) {
-    closePackSelectModal();
   }
 });
 
@@ -678,11 +632,8 @@ document.addEventListener("keydown", (e) => {
     if (els.settingsModal.classList.contains("active")) {
       closeSettings();
     }
-    if (els.deleteModal.classList.contains("active")) {
-      closeDeleteModal();
-    }
-    if (els.packSelectModal.classList.contains("active")) {
-      closePackSelectModal();
+    if (els.chipPopover.classList.contains("active")) {
+      closePopover();
     }
   }
 });
@@ -690,8 +641,28 @@ document.addEventListener("keydown", (e) => {
 // Refresh "X ago" display every minute
 setInterval(updateLastBuilt, 60_000);
 
+// Debug helper — run `window.debugRockDB()` in DevTools to diagnose filter issues.
+window.debugRockDB = function () {
+  return {
+    totalSongs: state.songs.length,
+    filteredCount: state.filtered.length,
+    filterState: { ...filterState },
+    viewport: {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+    },
+  };
+};
+
+// Refresh queue every 15s and re-render relative times every minute
+setInterval(loadQueue, 15_000);
+setInterval(renderQueue, 60_000);
+
 // Initialize
+els.search.value = "";
+els.requesterName.value = localStorage.getItem("rockdb-requester") || "";
 updateStickyOffsets();
 window.addEventListener("resize", debounce(updateStickyOffsets, 100));
 checkFirstRun();
 loadCatalog();
+loadQueue();

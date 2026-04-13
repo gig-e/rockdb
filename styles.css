@@ -140,9 +140,192 @@ main {
 
 /* Filter controls */
 .controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.search-wrap {
+  width: 100%;
+}
+
+.chip-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.controls-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.controls-actions button {
+  padding: 10px 16px;
+}
+
+.filter-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+  transition: border-color var(--transition), background var(--transition);
+  white-space: nowrap;
+}
+
+.filter-chip-btn:hover {
+  border-color: var(--sea);
+  background: var(--input-bg);
+  transform: none;
+  box-shadow: none;
+}
+
+.filter-chip-btn::after {
+  content: "▾";
+  font-size: 10px;
+  color: var(--slate);
+}
+
+.filter-chip-btn.active {
+  background: linear-gradient(135deg, var(--gradient-blue) 0%, var(--gradient-pink) 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.filter-chip-btn.active:hover {
+  background: linear-gradient(135deg, var(--gradient-blue) 0%, var(--gradient-pink) 100%);
+}
+
+.filter-chip-btn.active::after {
+  content: "×";
+  font-size: 15px;
+  color: white;
+  opacity: 0.9;
+}
+
+.chip-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 900;
+}
+
+.chip-backdrop.active {
+  display: block;
+}
+
+.chip-popover {
+  display: none;
+  position: fixed;
+  z-index: 950;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  width: 280px;
+  max-height: 60vh;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chip-popover.active {
+  display: flex;
+}
+
+.chip-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 6px;
+}
+
+.chip-popover-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--slate);
+  font-weight: 700;
+}
+
+.chip-popover-close {
+  background: transparent;
+  color: var(--slate);
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  padding: 0 4px;
+  box-shadow: none;
+  cursor: pointer;
+  width: auto;
+}
+
+.chip-popover-close:hover {
+  background: transparent;
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+}
+
+.chip-popover-search {
+  margin: 4px 16px 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--ink);
+  width: calc(100% - 32px);
+}
+
+.chip-popover-options {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 8px 12px;
+}
+
+.chip-popover-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.chip-popover-option:hover {
+  background: var(--input-bg);
+}
+
+.chip-popover-option.selected {
+  background: rgba(42, 157, 143, 0.22);
+  font-weight: 600;
+}
+
+.chip-popover-option.selected::after {
+  content: "✓";
+  color: var(--sea);
+  font-weight: 700;
+  margin-left: 8px;
+}
+
+.chip-popover-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--slate);
+  font-size: 13px;
 }
 
 label {
@@ -189,20 +372,6 @@ input[type="checkbox"] {
   height: 20px;
   margin: 0;
   accent-color: var(--sea);
-  cursor: pointer;
-}
-
-.controls .inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.controls .inline label {
-  margin-bottom: 0;
-  text-transform: none;
-  font-size: 14px;
   cursor: pointer;
 }
 
@@ -289,8 +458,6 @@ thead th {
   color: var(--slate);
   border-bottom: 2px solid var(--border);
   padding: 12px 10px;
-  position: sticky;
-  top: calc(var(--header-h, 0px) + var(--filter-h, 0px));
   background: var(--card);
 }
 
@@ -527,7 +694,7 @@ button.primary:hover {
 
 /* Deletion controls */
 .deletion-controls {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
@@ -535,6 +702,10 @@ button.primary:hover {
   background: var(--input-bg);
   border-radius: var(--radius);
   border: 1px solid var(--border);
+}
+
+.deletion-controls.active {
+  display: flex;
 }
 
 .selection-info {
@@ -752,6 +923,13 @@ tbody tr.selected {
    ======================================== */
 
 @media (max-width: 768px) {
+  /* Disable sticky on mobile — stacked filter panel is too tall to sit
+     above results without covering them. */
+  header,
+  .filters-panel {
+    position: static;
+  }
+
   header {
     padding: 16px 16px 12px;
   }
@@ -765,9 +943,7 @@ tbody tr.selected {
     border-radius: 14px;
   }
 
-  /* Stack controls vertically on mobile */
   .controls {
-    grid-template-columns: 1fr;
     gap: 12px;
   }
 
@@ -783,14 +959,26 @@ tbody tr.selected {
     width: 100%;
   }
 
-  .controls .inline {
-    flex-direction: column;
-    align-items: stretch;
+  .controls-actions button {
+    flex: 1 1 0;
   }
 
-  .controls .inline:has(input[type="checkbox"]) {
-    flex-direction: row;
-    align-items: center;
+  .filter-chip-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    width: auto;
+  }
+
+  /* Bottom sheet popover on mobile */
+  .chip-popover {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 75vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: none;
   }
 
   /* Deletion controls mobile layout */
@@ -1427,5 +1615,206 @@ tbody tr.selected {
 
   .merge-actions button {
     width: 100%;
+  }
+}
+
+/* ========================================
+   ADMIN: DELETE SONGS
+   ======================================== */
+
+.delete-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.delete-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.delete-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.delete-row-meta {
+  font-size: 12px;
+  color: var(--slate);
+  margin-top: 2px;
+}
+
+.delete-one-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+/* ========================================
+   QUEUE / REQUEST UI
+   ======================================== */
+
+.queue-panel .queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.queue-panel h3 {
+  margin: 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--slate);
+}
+
+.queue-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.queue-name-row label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.queue-name-row input {
+  flex: 1;
+}
+
+.queue-name-row input.needs-name {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+  animation: shake 0.35s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.queue-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--slate);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.queue-item-now {
+  background: linear-gradient(135deg, rgba(42, 157, 143, 0.22), rgba(240, 141, 70, 0.22));
+  border-color: var(--sea);
+}
+
+.queue-pos,
+.queue-now {
+  flex: 0 0 auto;
+  width: 36px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+.queue-now {
+  color: var(--sea);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.queue-item-song {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.queue-item-title {
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-item-artist {
+  font-size: 12px;
+  color: var(--slate);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-item-meta {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12px;
+}
+
+.queue-item-who {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.queue-item-time {
+  color: var(--slate);
+}
+
+.request-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: linear-gradient(135deg, var(--gradient-orange) 0%, var(--gradient-pink) 100%);
+  white-space: nowrap;
+}
+
+.song-card .request-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .queue-name-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .queue-item {
+    flex-wrap: wrap;
+  }
+  .queue-item-meta {
+    flex: 1 0 100%;
+    text-align: left;
+    display: flex;
+    gap: 10px;
   }
 }

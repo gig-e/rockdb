@@ -38,6 +38,20 @@ def build_catalog():
     subprocess.run([sys.executable, str(ROOT / "build_catalog.py")], check=True)
 META_PATH = ROOT / "catalog_meta.json"
 CONFIG_PATH = ROOT / "config.json"
+QUEUE_PATH = ROOT / "queue.json"
+
+
+def load_queue():
+    data = read_json(QUEUE_PATH)
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("next_id", 1)
+    data.setdefault("entries", [])
+    return data
+
+
+def save_queue(data):
+    write_json(QUEUE_PATH, data)
 
 
 def read_json(path: Path):
@@ -171,6 +185,12 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=500)
             return
+        if self.path == "/api/queue":
+            try:
+                self._send_json(load_queue())
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=500)
+            return
         super().do_GET()
 
     def _read_body(self):
@@ -185,6 +205,67 @@ class Handler(SimpleHTTPRequestHandler):
             return {}
 
     def do_POST(self):
+        if self.path == "/api/queue":
+            try:
+                data = self._read_body()
+                song_key = (data.get("song_key") or "").strip()
+                requested_by = (data.get("requested_by") or "").strip() or "Anonymous"
+                if not song_key:
+                    self._send_json({"error": "song_key required"}, status=400)
+                    return
+                catalog = read_json(CATALOG_PATH) or []
+                song = next((s for s in catalog if s.get("song_key") == song_key), None)
+                if not song:
+                    self._send_json({"error": "Song not found"}, status=404)
+                    return
+                import time
+                queue = load_queue()
+                entry = {
+                    "id": queue["next_id"],
+                    "song_key": song_key,
+                    "artist": song.get("artist", ""),
+                    "name": song.get("name", ""),
+                    "album": song.get("album", ""),
+                    "requested_by": requested_by[:40],
+                    "requested_at": time.time(),
+                }
+                queue["next_id"] += 1
+                queue["entries"].append(entry)
+                save_queue(queue)
+                self._send_json({"ok": True, "entry": entry, "queue": queue})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if self.path == "/api/queue/remove":
+            try:
+                data = self._read_body()
+                entry_id = data.get("id")
+                if entry_id is None:
+                    self._send_json({"error": "id required"}, status=400)
+                    return
+                queue = load_queue()
+                before = len(queue["entries"])
+                queue["entries"] = [e for e in queue["entries"] if e.get("id") != entry_id]
+                if len(queue["entries"]) == before:
+                    self._send_json({"error": "Entry not found"}, status=404)
+                    return
+                save_queue(queue)
+                self._send_json({"ok": True, "queue": queue})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if self.path == "/api/queue/clear":
+            try:
+                queue = load_queue()
+                queue["entries"] = []
+                save_queue(queue)
+                self._send_json({"ok": True, "queue": queue})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
         if self.path == "/api/build":
             try:
                 build_catalog()

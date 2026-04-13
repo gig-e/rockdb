@@ -8,7 +8,7 @@
   <meta name="description" content="Administrative tools for Rock Band database management" />
   <title>Admin - Gig-E's Rock Band Songs DB</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <header>
@@ -19,6 +19,29 @@
   </header>
 
   <main>
+    <section class="panel queue-panel">
+      <div class="queue-header">
+        <h3>Request Queue</h3>
+        <div class="backup-actions">
+          <button class="ghost" id="refresh-queue">Refresh</button>
+          <button class="danger" id="clear-queue">Clear All</button>
+        </div>
+      </div>
+      <div class="queue-list" id="admin-queue-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="backup-header">
+        <h3>Delete Songs</h3>
+        <div class="backup-actions">
+          <button id="rebuild-catalog" class="ghost">Rebuild Catalog</button>
+        </div>
+      </div>
+      <div class="setting-hint">Search the catalog and delete individual songs. Song folders and DTA entries are backed up automatically.</div>
+      <input type="text" id="delete-search" placeholder="Search artist, title, album…" autocomplete="off" style="margin-top: 12px;" />
+      <div id="delete-results" class="delete-results"></div>
+    </section>
+
     <section class="panel">
       <div class="backup-header">
         <h3>Backup Management</h3>
@@ -138,6 +161,6 @@
     </div>
   </div>
 
-  <script src="admin.js"></script>
+  <script src="admin.js?v=5"></script>
 </body>
 </html>

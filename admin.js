@@ -34,7 +34,160 @@ const els = {
   validateMerge: document.getElementById("validate-merge"),
   executeMerge: document.getElementById("execute-merge"),
   mergeValidationResult: document.getElementById("merge-validation-result"),
+  adminQueueList: document.getElementById("admin-queue-list"),
+  refreshQueue: document.getElementById("refresh-queue"),
+  clearQueue: document.getElementById("clear-queue"),
+  rebuildCatalog: document.getElementById("rebuild-catalog"),
+  deleteSearch: document.getElementById("delete-search"),
+  deleteResults: document.getElementById("delete-results"),
 };
+
+function escapeHtmlAdmin(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function adminQueueTimeAgo(ts) {
+  const seconds = Math.floor(Date.now() / 1000 - ts);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+async function loadAdminQueue() {
+  try {
+    const res = await fetch("/api/queue", { cache: "no-store" });
+    if (!res.ok) return;
+    const queue = await res.json();
+    renderAdminQueue(queue);
+  } catch (err) {
+    console.error("Failed to load queue:", err);
+  }
+}
+
+function renderAdminQueue(queue) {
+  const entries = queue.entries || [];
+  if (entries.length === 0) {
+    els.adminQueueList.innerHTML = `<div class="queue-empty">Queue is empty.</div>`;
+    return;
+  }
+  els.adminQueueList.innerHTML = entries
+    .map((e, i) => `
+      <div class="queue-item${i === 0 ? " queue-item-now" : ""}">
+        ${i === 0 ? '<span class="queue-now">NOW</span>' : `<span class="queue-pos">${i + 1}</span>`}
+        <div class="queue-item-song">
+          <div class="queue-item-title">${escapeHtmlAdmin(e.name)}</div>
+          <div class="queue-item-artist">${escapeHtmlAdmin(e.artist)}</div>
+        </div>
+        <div class="queue-item-meta">
+          <div class="queue-item-who">${escapeHtmlAdmin(e.requested_by)}</div>
+          <div class="queue-item-time">${adminQueueTimeAgo(e.requested_at)}</div>
+        </div>
+        <button type="button" class="ghost queue-played-btn" data-id="${e.id}">${i === 0 ? "Mark Played" : "Remove"}</button>
+      </div>
+    `)
+    .join("");
+}
+
+async function removeQueueEntry(id) {
+  try {
+    const res = await fetch("/api/queue/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      renderAdminQueue(data.queue);
+    }
+  } catch (err) {
+    console.error("Failed to remove queue entry:", err);
+  }
+}
+
+async function clearAdminQueue() {
+  if (!confirm("Clear all queue entries? This cannot be undone.")) return;
+  try {
+    const res = await fetch("/api/queue/clear", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json();
+      renderAdminQueue(data.queue);
+    }
+  } catch (err) {
+    console.error("Failed to clear queue:", err);
+  }
+}
+
+async function rebuildCatalog() {
+  els.rebuildCatalog.disabled = true;
+  els.rebuildCatalog.textContent = "Rebuilding…";
+  try {
+    const res = await fetch("/api/build", { method: "POST" });
+    if (!res.ok) throw new Error("build failed");
+    await loadCatalog();
+    setStatus("Catalog rebuilt");
+  } catch (err) {
+    setStatus("Rebuild failed");
+  } finally {
+    els.rebuildCatalog.disabled = false;
+    els.rebuildCatalog.textContent = "Rebuild Catalog";
+  }
+}
+
+function renderDeleteResults(term) {
+  const q = term.trim().toLowerCase();
+  if (!q) {
+    els.deleteResults.innerHTML = "";
+    return;
+  }
+  const matches = state.songs.filter((s) => {
+    const hay = `${s.artist} ${s.name} ${s.album} ${s.pack_name}`.toLowerCase();
+    return hay.includes(q);
+  }).slice(0, 50);
+  if (matches.length === 0) {
+    els.deleteResults.innerHTML = `<div class="queue-empty">No matches</div>`;
+    return;
+  }
+  els.deleteResults.innerHTML = matches
+    .map((s) => `
+      <div class="delete-row">
+        <div class="delete-row-info">
+          <strong>${escapeHtmlAdmin(s.artist)}</strong> — ${escapeHtmlAdmin(s.name)}
+          <div class="delete-row-meta">${escapeHtmlAdmin(s.album || "")} · ${escapeHtmlAdmin(s.pack_name || "")}</div>
+        </div>
+        <button type="button" class="danger delete-one-btn" data-song-key="${escapeHtmlAdmin(s.song_key)}">Delete</button>
+      </div>
+    `)
+    .join("");
+}
+
+async function deleteSingleSong(songKey) {
+  const song = state.songs.find((s) => s.song_key === songKey);
+  if (!song) return;
+  if (!confirm(`Delete "${song.artist} - ${song.name}"?\n\nA backup will be created.`)) return;
+  try {
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song_keys: [songKey] }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert(`Deletion failed: ${result.error || "unknown"}`);
+      return;
+    }
+    await loadCatalog();
+    renderDeleteResults(els.deleteSearch.value);
+    setStatus(result.summary || "Deleted");
+  } catch (err) {
+    alert(`Deletion failed: ${err.message}`);
+  }
+}
 
 // Utility functions
 function setStatus(message) {
@@ -808,9 +961,29 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Queue listeners
+els.refreshQueue.addEventListener("click", loadAdminQueue);
+els.clearQueue.addEventListener("click", clearAdminQueue);
+els.adminQueueList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".queue-played-btn");
+  if (!btn) return;
+  removeQueueEntry(Number(btn.dataset.id));
+});
+
+// Delete songs listeners
+els.rebuildCatalog.addEventListener("click", rebuildCatalog);
+els.deleteSearch.addEventListener("input", (e) => renderDeleteResults(e.target.value));
+els.deleteResults.addEventListener("click", (e) => {
+  const btn = e.target.closest(".delete-one-btn");
+  if (!btn) return;
+  deleteSingleSong(btn.dataset.songKey);
+});
+
 // Refresh "X ago" display every minute
 setInterval(updateLastBuilt, 60_000);
+setInterval(loadAdminQueue, 15_000);
 
 // Initialize
 loadCatalog();
 loadBackups();
+loadAdminQueue();

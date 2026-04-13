@@ -30,9 +30,11 @@ def find_song_entry_bounds(text: str, song_key: str) -> tuple[int, int] | None:
         - Count parentheses to find the matching closing paren
         - Return positions of the entire entry including outer parens
     """
-    # Pattern: newline, opening paren, optional whitespace, quoted song_key
-    # The song_key might appear with or without whitespace after opening paren
-    pattern = r'\n\(\s*\'?' + re.escape(song_key) + r'\'?'
+    # Pattern: newline, opening paren, optional whitespace, optionally-quoted
+    # song_key, followed by a boundary character (quote, whitespace, or ')').
+    # The trailing boundary prevents prefix-collision matches — e.g. searching
+    # for 'alive' must not match an entry for 'alivewiththeglory'.
+    pattern = r'\n\(\s*\'?' + re.escape(song_key) + r'(?=[\'\s)])'
 
     match = re.search(pattern, text, re.IGNORECASE)
     if not match:
