@@ -81,6 +81,17 @@ h1 {
   text-shadow: 4px 4px 6px var(--warm-shadow), 0 1px 0 rgba(0, 0, 0, 0.5);
 }
 
+h1 .brand-suffix {
+  display: inline-block;
+  margin-left: 0.25em;
+  font-size: 0.6em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: var(--sun);
+  vertical-align: middle;
+}
+
 header .meta {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.9);
