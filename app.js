@@ -137,7 +137,6 @@ function renderTable() {
       <td>${escapeHtml(song.name)}</td>
       <td>${escapeHtml(song.album)}</td>
       <td>${escapeHtml(song.year)}</td>
-      <td>${escapeHtml(song.pack_type)}</td>
       <td><button type="button" class="request-btn" data-song-key="${escapeHtml(song.song_key)}">Request</button></td>
     `;
     frag.appendChild(tr);
@@ -168,7 +167,6 @@ function renderMobileCards() {
         ${song.album ? `<span><strong>Album:</strong> ${escapeHtml(song.album)}</span>` : ""}
         ${song.year ? `<span><strong>Year:</strong> ${escapeHtml(song.year)}</span>` : ""}
         ${song.genre ? `<span><strong>Genre:</strong> ${escapeHtml(song.genre)}</span>` : ""}
-        ${song.pack_type ? `<span><strong>Type:</strong> ${escapeHtml(song.pack_type)}</span>` : ""}
       </div>
       <button type="button" class="request-btn" data-song-key="${escapeHtml(song.song_key)}">Request</button>
     `;
