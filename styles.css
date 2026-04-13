@@ -87,12 +87,20 @@ header .meta {
 }
 
 .header-actions {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 200;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(5, 5, 5, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(240, 141, 70, 0.35);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
 }
 
 .admin-link,
@@ -963,6 +971,19 @@ tbody tr.selected {
 
   header {
     padding: 16px 16px 12px;
+  }
+
+  .header-actions {
+    top: 8px;
+    right: 8px;
+    gap: 6px;
+    padding: 4px 6px;
+  }
+
+  .header-actions .admin-link,
+  .header-actions .settings-btn {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   main {
